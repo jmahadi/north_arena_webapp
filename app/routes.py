@@ -1,6 +1,7 @@
 from flask import request, render_template
-from app import db,app
+from app import db , app 
 from sqlalchemy.sql import text
+from models import User 
 
 
 

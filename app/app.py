@@ -7,19 +7,20 @@ app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'postgres
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
-# Import your models
-from models import User
+# Initialize SQLAlchemy with the Flask app
 
+
+# Import your models
 
 
 
 if __name__ == '__main__':
-    
-
-    # Import your routes
-    from routes import index, add_column
-
+        # Import your routes
+    from routes import *
+    from models import *
+   
     # Register routes
     app.add_url_rule('/', view_func=index)
     app.add_url_rule('/add_column', view_func=add_column,methods=['GET', 'POST'])
+
     app.run(debug=True)
