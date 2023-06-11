@@ -4,3 +4,4 @@ flask-sqlalchemy
 flask
 werkzeug
 psycopg2-binary
+Flask-Login
