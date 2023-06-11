@@ -1,5 +1,5 @@
 from flask import request, render_template , jsonify ,redirect ,url_for,flash
-from flask_login import login_user, logout_user, login_required, current_user
+from flask_login import login_user, logout_user, login_required, current_user 
 from werkzeug.security import generate_password_hash, check_password_hash
 from app import db , app ,login_manager
 from sqlalchemy.sql import text
@@ -67,14 +67,10 @@ def register():
         username = request.form['username']
         email = request.form['email']
         password = request.form['password']
-        confirm_password = request.form['confirm_password']
+
 
         if not re.match(r'^(?=.*\d)(?=.*[a-zA-Z]).{8,}$', password):
             flash('Password must be at least 8 characters long and contain both letters and numbers.')
-            return redirect(url_for('register'))
-
-        if password != confirm_password:
-            flash('Passwords do not match.')
             return redirect(url_for('register'))
 
         user = User(username=username, email=email)
