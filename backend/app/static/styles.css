@@ -1,0 +1,101 @@
+
+@font-face {
+    font-family: 'Open Sans';
+    src: url('/static/fonts/OpenSans-Regular.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: 'Open Sans SB';
+    src: url('/static/fonts/OpenSans-SemiBold.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+}
+@font-face {
+    font-family: 'Open Sans L';
+    src: url('/static/fonts/OpenSans-Light.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+}
+
+body {
+    font-family: 'Open Sans', sans-serif;
+    background-image: url('/static/black_ground_bg.jpg');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+    color: #fff;
+    padding-top: 1.5rem;
+    min-height: 100vh;
+}
+
+h1, h2, h3 {
+    font-family: 'Open Sans', sans-serif;
+    
+}
+
+/* Update link styles */
+a {
+    color: #fff;  /* Set default link color */
+}
+a:hover {
+    color: #DC6000; 
+}
+.navbar {
+    background-color: #232323;
+    width: 80%;
+    margin: 0 auto;
+    border-radius: 10px;
+}
+.navbar-brand {
+    margin-right: 2rem;
+}
+.nav-link {
+    color: #F2E8CF !important;
+    position: relative;  /* For positioning the underline */
+    transition: all 0.3s ease;  /* Smooth transition for hover effect */
+}
+.nav-link:hover {
+    color: #F2E8CF !important;
+}
+
+.nav-link::after {
+content: '';
+position: absolute;
+width: 0;
+height: 2px;
+background-color: #DC6000;  /* Orange underline */
+bottom: -2px;
+left: 50%;
+transform: translateX(-50%);
+transition: width 0.3s ease;
+}
+.navbar .nav-link:hover::after {
+    width: 100%;  /* Full width on hover */
+}
+
+.content-container {
+    width: 80%;  /* Adjust this value to change the width of the content */
+    margin: auto;
+    padding: 1rem;
+    background-color: transparent;
+}
+.alert {
+    background-color: #444;
+    border: none;
+}
+.btn-primary {
+    background-color: #232323;
+    border: none;
+}
+.btn-primary:hover {
+    background-color: #DC6000;
+}
+.alert-info-white {
+    color: white;
+}
+
+
+
