@@ -2,17 +2,44 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Your custom styles go here */
-body {
-  font-family: 'Open Sans', sans-serif;
-  background-image: url('/static/black_ground_bg.jpg');
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-  background-attachment: fixed;
-  color: #fff;
-  padding-top: 1.5rem;
-  min-height: 100vh;
+/* Your existing styles */
+@font-face {
+    font-family: 'Open Sans';
+    src: url('/fonts/OpenSans-Regular.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
 }
 
-/* ... rest of your custom styles ... */
+@font-face {
+    font-family: 'Open Sans SB';
+    src: url('/fonts/OpenSans-SemiBold.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+}
+
+@font-face {
+    font-family: 'Open Sans L';
+    src: url('/fonts/OpenSans-Light.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+}
+
+body {
+    font-family: 'Open Sans', sans-serif;
+    background-image: url('/images/black_ground_bg.jpg');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+    color: #fff;
+    min-height: 100vh;
+    margin: 0;
+    padding: 0;
+}
+
+/* Add this to prevent image pixelation */
+img {
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+}
+/* ... rest of your styles ... */
