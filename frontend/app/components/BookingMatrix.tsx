@@ -20,6 +20,7 @@ interface Booking {
   booking_date: string;
   time_slot: TimeSlot;
   booked_by: string;  // Add this line to include the user ID
+  transaction_status?: 'PENDING' | 'PARTIAL' | 'SUCCESSFUL' | null;
 }
 
 type BookingsData = Record<string, Booking>;
@@ -75,7 +76,7 @@ export default function BookingMatrix({ bookings, handleCellClick, startDate, en
                   >
                     <div
                       className={`
-                        rounded-lg py-2 px-3 cursor-pointer transition duration-300 ease-in-out
+                        rounded-lg py-2 px-3 cursor-pointer transition duration-300 ease-in-out relative
                         ${booking 
                           ? 'bg-primary bg-opacity-70 hover:bg-opacity-100 text-white' 
                           : 'bg-gray-700 hover:bg-primary hover:bg-opacity-70 text-gray-300 hover:text-white'}
@@ -84,8 +85,31 @@ export default function BookingMatrix({ bookings, handleCellClick, startDate, en
                     >
                       {booking ? (
                         <>
-                          <div>{booking.name}</div>
-                          <div className="text-xs mt-1 opacity-75">ID: {booking.booked_by}</div>
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1">
+                              <div>{booking.name}</div>
+                              <div className="text-xs mt-1 opacity-75">ID: {booking.booked_by}</div>
+                            </div>
+                            {/* Payment Status Indicator */}
+                            <div className="ml-2">
+                              <div 
+                                className={`w-3 h-3 rounded-full ${
+                                  booking.transaction_status === 'SUCCESSFUL' ? 'bg-green-400' :
+                                  booking.transaction_status === 'PARTIAL' ? 'bg-yellow-400' :
+                                  booking.transaction_status === 'PENDING' ? 'bg-red-400' :
+                                  'bg-gray-400'
+                                }`}
+                                title={`Payment Status: ${booking.transaction_status || 'No Payments'}`}
+                              />
+                            </div>
+                          </div>
+                          {/* Payment Status Text for Mobile */}
+                          <div className="text-xs mt-1 opacity-75 lg:hidden">
+                            {booking.transaction_status ? 
+                              `Payment: ${booking.transaction_status}` : 
+                              'No Payments'
+                            }
+                          </div>
                         </>
                       ) : (
                         'Open'

@@ -7,6 +7,8 @@ interface TransactionFormProps {
   editingTransaction?: TransactionDetail | null;
   // Added isLoading property to disable form during submission
   isLoading?: boolean;
+  // Added prefilledBookingId to auto-select booking from URL params
+  prefilledBookingId?: number;
   onSubmit: (data: {
     booking_id?: number;
     transaction_id?: number;
@@ -23,6 +25,7 @@ interface TransactionFormProps {
 const TransactionForm: React.FC<TransactionFormProps> = ({ 
   editingTransaction, 
   isLoading = false,
+  prefilledBookingId,
   onSubmit, 
   onDelete,
   onCancel 
@@ -36,7 +39,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [isLoadingBookings, setIsLoadingBookings] = useState(false);
 
-  // Set form values when in edit mode
+  // Set form values when in edit mode or with prefilled booking
   useEffect(() => {
     if (editingTransaction) {
       // When in edit mode, we don't need to select a booking as it's already associated
@@ -48,8 +51,25 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
       setTransactionType('');
       setPaymentMethod('');
       setAmount('');
+      
+      // If we have a prefilled booking ID, set it as selected
+      if (prefilledBookingId) {
+        setSelectedBooking(prefilledBookingId.toString());
+      }
     }
-  }, [editingTransaction]);
+  }, [editingTransaction, prefilledBookingId]);
+
+  // Auto-fill booking date when we have a prefilled booking ID
+  useEffect(() => {
+    if (prefilledBookingId && !editingTransaction) {
+      // Extract date from URL parameters (passed from booking page)
+      const urlParams = new URLSearchParams(window.location.search);
+      const dateFromUrl = urlParams.get('date');
+      if (dateFromUrl) {
+        setBookingDate(dateFromUrl);
+      }
+    }
+  }, [prefilledBookingId, editingTransaction]);
   
   useEffect(() => {
     if (bookingDate && !editingTransaction) {

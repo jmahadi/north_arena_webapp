@@ -6,6 +6,7 @@ import AdminLayout from '../components/AdminLayout';
 import BookingForm from '../components/BookingForm';
 import BookingMatrix from '../components/BookingMatrix';
 import { fetchBookings, addBooking, updateBooking, deleteBooking } from '../api/bookings';
+import { getTransactionSummaries } from '../api/transactions';
 import Cookies from 'js-cookie';
 import axios from 'axios';
 
@@ -29,6 +30,7 @@ interface Booking {
   booking_date: string;
   time_slot: TimeSlot;
   booked_by: string;
+  transaction_status?: 'PENDING' | 'PARTIAL' | 'SUCCESSFUL' | null;
 }
 
 type BookingsData = Record<string, Booking>;
@@ -46,6 +48,7 @@ export default function BookingsPage() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [selectedBookingId, setSelectedBookingId] = useState<number | null>(null);
+  const [selectedBookingTransactionStatus, setSelectedBookingTransactionStatus] = useState<'PENDING' | 'PARTIAL' | 'SUCCESSFUL' | null>(null);
 
   useEffect(() => {
     const token = Cookies.get('token');
@@ -72,9 +75,34 @@ export default function BookingsPage() {
     setError(null);
     try {
       console.log('Fetching bookings data...');
-      const data = await fetchBookings(startDate, endDate);
-      console.log('Bookings data received:', data);
-      setBookings(data.bookingsData || {});
+      
+      // Fetch both bookings and transaction summaries
+      const [bookingsResponse, transactionSummaries] = await Promise.all([
+        fetchBookings(startDate, endDate),
+        getTransactionSummaries()
+      ]);
+      
+      console.log('Bookings data received:', bookingsResponse);
+      console.log('Transaction summaries received:', transactionSummaries);
+      
+      const bookingsData = bookingsResponse.bookingsData || {};
+      
+      // Create a lookup map for transaction status by booking_id
+      const transactionStatusMap = new Map();
+      transactionSummaries.forEach(summary => {
+        transactionStatusMap.set(summary.booking_id, summary.status);
+      });
+      
+      // Merge transaction status into bookings data
+      Object.keys(bookingsData).forEach(key => {
+        const booking = bookingsData[key];
+        if (booking.id) {
+          booking.transaction_status = transactionStatusMap.get(booking.id) || null;
+        }
+      });
+      
+      console.log('Merged bookings with transaction status:', bookingsData);
+      setBookings(bookingsData);
     } catch (error) {
       console.error('Failed to fetch bookings:', error);
       setError('Failed to fetch bookings. Please try again.');
@@ -98,10 +126,12 @@ export default function BookingsPage() {
       setName(booking.name);
       setPhone(booking.phone);
       setSelectedBookingId(booking.id);
+      setSelectedBookingTransactionStatus(booking.transaction_status || null);
     } else {
       setName('');
       setPhone('');
       setSelectedBookingId(null);
+      setSelectedBookingTransactionStatus(null);
     }
   };
 
@@ -160,6 +190,7 @@ export default function BookingsPage() {
     setSelectedDate('');
     setSelectedSlot('');
     setSelectedBookingId(null);
+    setSelectedBookingTransactionStatus(null);
   };
 
   if (isLoading) {
@@ -185,6 +216,7 @@ export default function BookingsPage() {
               selectedBookingId={selectedBookingId}
               handleSubmit={handleSubmit}
               handleDelete={handleDelete}
+              transactionStatus={selectedBookingTransactionStatus}
             />
 
             <div className="mt-8">

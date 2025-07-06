@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import AdminLayout from '../components/AdminLayout';
 import TransactionForm from '../components/TransactionForm';
 import TransactionSummaryTable from '../components/TransactionSummaryTable';
@@ -27,6 +27,7 @@ interface FormTransactionData {
 
 export default function TransactionsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [transactions, setTransactions] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -37,6 +38,15 @@ export default function TransactionsPage() {
   });
   // Global refresh trigger for the entire page
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  
+  // State for booking context from URL parameters
+  const [bookingContext, setBookingContext] = useState<{
+    bookingId?: number;
+    name?: string;
+    phone?: string;
+    date?: string;
+    slot?: string;
+  } | null>(null);
 
   // Fetch transactions with a memoized function for efficiency
   const fetchTransactions = useCallback(async () => {
@@ -53,6 +63,25 @@ export default function TransactionsPage() {
       setIsLoading(false);
     }
   }, [dateRange.startDate, dateRange.endDate]);
+
+  // Parse URL parameters for booking context
+  useEffect(() => {
+    const bookingId = searchParams.get('bookingId');
+    const name = searchParams.get('name');
+    const phone = searchParams.get('phone');
+    const date = searchParams.get('date');
+    const slot = searchParams.get('slot');
+    
+    if (bookingId) {
+      setBookingContext({
+        bookingId: parseInt(bookingId),
+        name: name || undefined,
+        phone: phone || undefined,
+        date: date || undefined,
+        slot: slot || undefined,
+      });
+    }
+  }, [searchParams]);
 
   // Check auth and initial data load
   useEffect(() => {
@@ -149,7 +178,50 @@ export default function TransactionsPage() {
   return (
     <AdminLayout>
       <div className="container mx-auto px-4 py-8">
-        <h1 className="text-3xl font-bold mb-6 text-white">Transactions</h1>
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-3xl font-bold text-white">Transactions</h1>
+          {bookingContext && (
+            <button
+              onClick={() => router.push('/bookings')}
+              className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition duration-300 ease-in-out flex items-center space-x-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+              <span>Back to Bookings</span>
+            </button>
+          )}
+        </div>
+        
+        {/* Booking Context Banner */}
+        {bookingContext && (
+          <div className="mb-6 p-4 bg-blue-800 bg-opacity-30 border border-blue-600 rounded-lg">
+            <div className="flex items-center space-x-3 mb-2">
+              <svg className="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <h2 className="text-lg font-semibold text-blue-300">Managing Payments for Booking</h2>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+              <div>
+                <span className="text-gray-400">Customer:</span>
+                <span className="text-white ml-2">{bookingContext.name}</span>
+              </div>
+              <div>
+                <span className="text-gray-400">Phone:</span>
+                <span className="text-white ml-2">{bookingContext.phone}</span>
+              </div>
+              <div>
+                <span className="text-gray-400">Date:</span>
+                <span className="text-white ml-2">{bookingContext.date}</span>
+              </div>
+              <div>
+                <span className="text-gray-400">Time:</span>
+                <span className="text-white ml-2">{bookingContext.slot}</span>
+              </div>
+            </div>
+          </div>
+        )}
         
         {error && (
           <div className="mb-6 p-4 bg-red-500 bg-opacity-20 border border-red-500 rounded-lg text-red-500">
@@ -160,6 +232,7 @@ export default function TransactionsPage() {
         <TransactionForm 
           onSubmit={handleSubmitTransaction}
           isLoading={isSubmitting}
+          prefilledBookingId={bookingContext?.bookingId}
         />
         
         {isLoading && transactions.length === 0 ? (
@@ -172,6 +245,7 @@ export default function TransactionsPage() {
             onDeleteTransaction={handleDeleteTransaction}
             onDateRangeChange={handleDateRangeChange}
             currentDateRange={dateRange}
+            filterByBookingId={bookingContext?.bookingId}
           />
         )}
       </div>
