@@ -16,6 +16,7 @@
     "@mui/material": "^6.1.2",
     "@types/js-cookie": "^3.0.6",
     "axios": "^1.7.7",
+    "date-fns": "^4.1.0",
     "js-cookie": "^3.0.5",
     "next": "14.2.14",
     "react": "^18",
