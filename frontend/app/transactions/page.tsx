@@ -179,11 +179,11 @@ export default function TransactionsPage() {
     <AdminLayout>
       <div className="container mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-6">
-          <h1 className="text-3xl font-bold text-white">Transactions</h1>
+          <h1 className="text-3xl font-light text-white">Transactions</h1>
           {bookingContext && (
             <button
               onClick={() => router.push('/bookings')}
-              className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition duration-300 ease-in-out flex items-center space-x-2"
+              className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-md transition-colors flex items-center space-x-2"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
@@ -195,12 +195,12 @@ export default function TransactionsPage() {
         
         {/* Booking Context Banner */}
         {bookingContext && (
-          <div className="mb-6 p-4 bg-blue-800 bg-opacity-30 border border-blue-600 rounded-lg">
+          <div className="mb-6 p-4 bg-orange-500/10 border border-orange-500/30 rounded-lg">
             <div className="flex items-center space-x-3 mb-2">
-              <svg className="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-5 h-5 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <h2 className="text-lg font-semibold text-blue-300">Managing Payments for Booking</h2>
+              <h2 className="text-lg font-medium text-orange-400">Managing Payments for Booking</h2>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
               <div>
@@ -224,7 +224,7 @@ export default function TransactionsPage() {
         )}
         
         {error && (
-          <div className="mb-6 p-4 bg-red-500 bg-opacity-20 border border-red-500 rounded-lg text-red-500">
+          <div className="mb-6 p-4 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400">
             {error}
           </div>
         )}

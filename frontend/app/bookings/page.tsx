@@ -200,7 +200,7 @@ export default function BookingsPage() {
   return (
     <AdminLayout>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-        <h1 className="text-4xl font-bold text-white mb-10 text-center">Bookings Management</h1>
+        <h1 className="text-3xl font-light text-white mb-8">Bookings</h1>
         
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
           <div className="lg:col-span-1">
@@ -220,29 +220,29 @@ export default function BookingsPage() {
             />
 
             <div className="mt-8">
-              <h2 className="text-2xl font-semibold text-white mb-4">Date Range</h2>
+              <h2 className="text-lg font-medium text-white mb-4">Date Range</h2>
               <div className="flex flex-col space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-300">Start Date</label>
+                  <label className="block text-sm font-medium text-gray-400 mb-2">Start Date</label>
                   <input
                     type="date"
                     value={startDate}
                     onChange={(e) => setStartDate(e.target.value)}
-                    className="mt-1 block w-full rounded-md bg-gray-700 border-gray-600 text-white focus:ring-2 focus:ring-primary"
+                    className="block w-full rounded-md bg-black/20 border border-gray-700 text-white focus:border-orange-500 focus:outline-none transition-colors p-3"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-300">End Date</label>
+                  <label className="block text-sm font-medium text-gray-400 mb-2">End Date</label>
                   <input
                     type="date"
                     value={endDate}
                     onChange={(e) => setEndDate(e.target.value)}
-                    className="mt-1 block w-full rounded-md bg-gray-700 border-gray-600 text-white focus:ring-2 focus:ring-primary"
+                    className="block w-full rounded-md bg-black/20 border border-gray-700 text-white focus:border-orange-500 focus:outline-none transition-colors p-3"
                   />
                 </div>
                 <button 
                   onClick={handleDateRangeChange} 
-                  className="w-full px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-hover transition duration-300 ease-in-out"
+                  className="w-full px-4 py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-md transition-all duration-200 hover:shadow-lg font-medium"
                 >
                   Update Range
                 </button>

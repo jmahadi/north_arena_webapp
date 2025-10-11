@@ -95,11 +95,14 @@ async def dashboard(current_user: User = Depends(get_current_user), db: AsyncSes
         raise HTTPException(status_code=401, detail="Not authenticated")
 
     try:
-
         today = datetime.now().date()
+        current_time = datetime.now()
         first_day_of_month = today.replace(day=1)
         last_month_start = (first_day_of_month - timedelta(days=1)).replace(day=1)
+        seven_days_ago = today - timedelta(days=7)
+        thirty_days_ago = today - timedelta(days=30)
 
+        # Basic metrics
         bookings_this_month = await db.execute(
             select(func.count(Booking.id)).filter(Booking.booking_date >= first_day_of_month)
         )
@@ -110,6 +113,7 @@ async def dashboard(current_user: User = Depends(get_current_user), db: AsyncSes
         )
         upcoming_bookings = upcoming_bookings.scalar_one()
 
+        # Revenue metrics
         revenue_this_month = await db.execute(
             select(func.sum(Transaction.amount))
             .filter(Transaction.created_at >= first_day_of_month)
@@ -124,16 +128,130 @@ async def dashboard(current_user: User = Depends(get_current_user), db: AsyncSes
 
         revenue_change = ((revenue_this_month - revenue_last_month) / revenue_last_month * 100) if revenue_last_month else 100
 
+        # New enhanced metrics
+        total_bookings = await db.execute(select(func.count(Booking.id)))
+        total_bookings = total_bookings.scalar_one()
+
+        total_revenue = await db.execute(select(func.sum(Transaction.amount)))
+        total_revenue = total_revenue.scalar_one() or 0
+
+        bookings_last_week = await db.execute(
+            select(func.count(Booking.id)).filter(Booking.booking_date >= seven_days_ago)
+        )
+        bookings_last_week = bookings_last_week.scalar_one()
+
+        revenue_last_30_days = await db.execute(
+            select(func.sum(Transaction.amount))
+            .filter(Transaction.created_at >= thirty_days_ago)
+        )
+        revenue_last_30_days = revenue_last_30_days.scalar_one() or 0
+
+        # Today's bookings
+        todays_bookings = await db.execute(
+            select(func.count(Booking.id)).filter(Booking.booking_date == today)
+        )
+        todays_bookings = todays_bookings.scalar_one()
+
+        # Most popular time slots (last 30 days)
+        popular_slots = await db.execute(
+            select(Booking.time_slot, func.count(Booking.id).label('count'))
+            .filter(Booking.booking_date >= thirty_days_ago)
+            .group_by(Booking.time_slot)
+            .order_by(func.count(Booking.id).desc())
+            .limit(5)
+        )
+        popular_slots_data = [{"time_slot": row[0], "count": row[1]} for row in popular_slots]
+
+        # Revenue by payment method (last 30 days)
+        payment_breakdown = await db.execute(
+            select(Transaction.payment_method, func.sum(Transaction.amount))
+            .filter(Transaction.created_at >= thirty_days_ago)
+            .group_by(Transaction.payment_method)
+        )
+        payment_data = [{"method": row[0].value, "amount": float(row[1])} for row in payment_breakdown]
+
+        # Daily revenue for last 7 days (for chart)
+        daily_revenue = []
+        for i in range(7):
+            day = today - timedelta(days=6-i)
+            day_start = datetime.combine(day, datetime.min.time())
+            day_end = datetime.combine(day, datetime.max.time())
+            
+            revenue = await db.execute(
+                select(func.sum(Transaction.amount))
+                .filter(Transaction.created_at >= day_start, Transaction.created_at <= day_end)
+            )
+            revenue = revenue.scalar_one() or 0
+            daily_revenue.append({"date": day.isoformat(), "revenue": float(revenue)})
+
+        # Daily bookings for last 7 days (for chart)
+        daily_bookings = []
+        for i in range(7):
+            day = today - timedelta(days=6-i)
+            
+            booking_count = await db.execute(
+                select(func.count(Booking.id)).filter(Booking.booking_date == day)
+            )
+            booking_count = booking_count.scalar_one()
+            daily_bookings.append({"date": day.isoformat(), "bookings": booking_count})
+
+        # Recent bookings (last 5)
+        recent_bookings = await db.execute(
+            select(Booking.name, Booking.booking_date, Booking.time_slot, Booking.created_at)
+            .order_by(Booking.created_at.desc())
+            .limit(5)
+        )
+        recent_bookings_data = [{
+            "name": row[0], 
+            "booking_date": row[1].isoformat(), 
+            "time_slot": row[2], 
+            "created_at": row[3].isoformat()
+        } for row in recent_bookings]
+
+        # Pending vs completed transactions
+        pending_transactions = await db.execute(
+            select(func.count(TransactionSummary.booking_id))
+            .filter(TransactionSummary.status == TransactionStatus.PENDING)
+        )
+        pending_transactions = pending_transactions.scalar_one()
+
+        completed_transactions = await db.execute(
+            select(func.count(TransactionSummary.booking_id))
+            .filter(TransactionSummary.status == TransactionStatus.SUCCESSFUL)
+        )
+        completed_transactions = completed_transactions.scalar_one()
+
+        # Average booking value
+        avg_booking_value = revenue_this_month / bookings_this_month if bookings_this_month > 0 else 0
+
         days_this_month = (today - first_day_of_month).days + 1
         avg_bookings_per_day = bookings_this_month / days_this_month if days_this_month > 0 else 0
         
-        logger.info("Dashboard data successfully retrieved")
+        logger.info("Enhanced dashboard data successfully retrieved")
         return {
+            # Basic metrics
             "bookings_this_month": bookings_this_month,
             "upcoming_bookings": upcoming_bookings,
-            "revenue_this_month": revenue_this_month,
-            "revenue_change": revenue_change,
-            "avg_bookings_per_day": avg_bookings_per_day
+            "revenue_this_month": float(revenue_this_month),
+            "revenue_change": float(revenue_change),
+            "avg_bookings_per_day": float(avg_bookings_per_day),
+            
+            # Enhanced metrics
+            "total_bookings": total_bookings,
+            "total_revenue": float(total_revenue),
+            "bookings_last_week": bookings_last_week,
+            "revenue_last_30_days": float(revenue_last_30_days),
+            "todays_bookings": todays_bookings,
+            "avg_booking_value": float(avg_booking_value),
+            "pending_transactions": pending_transactions,
+            "completed_transactions": completed_transactions,
+            
+            # Chart data
+            "daily_revenue": daily_revenue,
+            "daily_bookings": daily_bookings,
+            "popular_time_slots": popular_slots_data,
+            "payment_breakdown": payment_data,
+            "recent_bookings": recent_bookings_data
         }
     except Exception as e:
         logger.error(f"Error retrieving dashboard data: {str(e)}")
@@ -545,6 +663,23 @@ async def list_slot_prices(db: AsyncSession = Depends(get_db)):
         logging.error(f"Error fetching slot prices: {str(exc)}")
         return JSONResponse(status_code=500, content={"success": False, "message": f"Error fetching slot prices: {str(exc)}"})
 
+@router.get("/available_time_slots", response_class=JSONResponse)
+async def get_available_time_slots(db: AsyncSession = Depends(get_db)):
+    try:
+        # Get all unique time slots from the slot_prices table
+        result = await db.execute(
+            select(SlotPrice.time_slot).distinct().order_by(SlotPrice.time_slot)
+        )
+        time_slots = [row[0] for row in result.fetchall()]
+        
+        return JSONResponse(content={
+            "success": True,
+            "time_slots": time_slots
+        })
+    except Exception as exc:
+        logging.error(f"Error fetching available time slots: {str(exc)}")
+        return JSONResponse(status_code=500, content={"success": False, "message": f"Error fetching available time slots: {str(exc)}"})
+
 @router.post("/add_update_slot_price", response_class=JSONResponse)
 async def add_update_slot_price(
     time_slot: str = Form(...),
@@ -590,7 +725,33 @@ async def add_update_slot_price(
         logging.error(f"Error adding/updating slot price: {str(exc)}")
         return JSONResponse(status_code=500, content={"success": False, "message": f"Error adding/updating slot price: {str(exc)}"})
 
-
+@router.delete("/delete_slot_price/{slot_price_id}", response_class=JSONResponse)
+async def delete_slot_price(
+    slot_price_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    try:
+        if not current_user:
+            return JSONResponse(status_code=401, content={"success": False, "message": "Not authenticated"})
+        
+        # Find the slot price to delete
+        slot_price_result = await db.execute(
+            select(SlotPrice).filter(SlotPrice.id == slot_price_id)
+        )
+        slot_price = slot_price_result.scalar_one_or_none()
+        
+        if not slot_price:
+            return JSONResponse(status_code=404, content={"success": False, "message": "Slot price not found"})
+        
+        await db.delete(slot_price)
+        await db.commit()
+        
+        return JSONResponse(content={"success": True, "message": "Slot price deleted successfully"})
+    except Exception as exc:
+        await db.rollback()
+        logging.error(f"Error deleting slot price: {str(exc)}")
+        return JSONResponse(status_code=500, content={"success": False, "message": f"Error deleting slot price: {str(exc)}"})
 
 
 '''

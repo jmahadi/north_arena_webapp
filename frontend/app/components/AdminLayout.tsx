@@ -57,21 +57,24 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
               <XMarkIcon className="h-6 w-6" />
             </button>
           </div>
-          <nav className="space-y-2">
-            <Link href="/dashboard" className="block py-2 px-4 rounded transition-colors duration-200 text-white hover:bg-primary hover:bg-opacity-50">
+          <nav className="space-y-1">
+            <Link href="/dashboard" className="block py-3 px-4 rounded-md transition-colors duration-200 text-gray-300 hover:bg-orange-600/20 hover:text-white border-l-2 border-transparent hover:border-orange-500">
               Dashboard
             </Link>
-            <Link href="/bookings" className="block py-2 px-4 rounded transition-colors duration-200 text-white hover:bg-primary hover:bg-opacity-50">
+            <Link href="/bookings" className="block py-3 px-4 rounded-md transition-colors duration-200 text-gray-300 hover:bg-orange-600/20 hover:text-white border-l-2 border-transparent hover:border-orange-500">
               Bookings
             </Link>
-            <Link href="/transactions" className="block py-2 px-4 rounded transition-colors duration-200 text-white hover:bg-primary hover:bg-opacity-50">
+            <Link href="/transactions" className="block py-3 px-4 rounded-md transition-colors duration-200 text-gray-300 hover:bg-orange-600/20 hover:text-white border-l-2 border-transparent hover:border-orange-500">
               Transactions
+            </Link>
+            <Link href="/slot-prices" className="block py-3 px-4 rounded-md transition-colors duration-200 text-gray-300 hover:bg-orange-600/20 hover:text-white border-l-2 border-transparent hover:border-orange-500">
+              Slots & Prices
             </Link>
             {/* Add more menu items as needed */}
           </nav>
           <button
             onClick={handleLogout}
-            className="mt-6 w-full flex items-center justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary hover:bg-primary-hover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
+            className="mt-6 w-full flex items-center justify-center py-3 px-4 border border-gray-700 rounded-md text-sm font-medium text-gray-300 bg-gray-800/50 hover:bg-red-600/20 hover:text-red-400 hover:border-red-500/30 transition-colors focus:outline-none"
           >
             <ArrowRightOnRectangleIcon className="h-5 w-5 mr-2" />
             Logout

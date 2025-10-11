@@ -78,65 +78,198 @@
 </style>
 
 <div class="container mt-5">
-    <h1>Manage Slot Prices</h1>
+    <h1>Slots & Prices Management</h1>
 
+    <!-- Navigation tabs -->
+    <ul class="nav nav-tabs mb-4">
+        <li class="nav-item">
+            <a class="nav-link active" id="add-price-tab" data-bs-toggle="tab" href="#add-price">Add/Update Prices</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" id="manage-slots-tab" data-bs-toggle="tab" href="#manage-slots">Manage Time Slots</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" id="view-all-tab" data-bs-toggle="tab" href="#view-all">View All Prices</a>
+        </li>
+    </ul>
 
-    
-    <div class="row">
-        <div class="col-md-6">
-            <h2>Add/Update Slot Price</h2>
-            <form id="slot-price-form">
-                <div class="form-group">
-                    <label for="time-slot">Time Slot:</label>
-                    <select id="time-slot" name="time_slot" class="form-control" required>
-                        <option value="9:30 AM - 11:00 AM">9:30 AM - 11:00 AM</option>
-                        <option value="11:00 AM - 12:30 PM">11:00 AM - 12:30 PM</option>
-                        <option value="12:30 PM - 2:00 PM">12:30 PM - 2:00 PM</option>
-                        <option value="3:00 PM - 4:30 PM">3:00 PM - 4:30 PM</option>
-                        <option value="4:30 PM - 6:00 PM">4:30 PM - 6:00 PM</option>
-                        <option value="6:00 PM - 7:30 PM">6:00 PM - 7:30 PM</option>
-                        <option value="7:30 PM - 9:00 PM">7:30 PM - 9:00 PM</option>
-                        <option value="9:00 PM - 10:30 PM">9:00 PM - 10:30 PM</option>
-                    </select>
+    <div class="tab-content">
+        <!-- Add/Update Prices Tab -->
+        <div class="tab-pane fade show active" id="add-price">
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Add/Update Slot Price</h3>
+                        </div>
+                        <div class="card-body">
+                            <form id="slot-price-form">
+                                <div class="form-group mb-3">
+                                    <label for="time-slot">Time Slot:</label>
+                                    <select id="time-slot" name="time_slot" class="form-control" required>
+                                        <option value="">Select Time Slot</option>
+                                        <option value="9:30 AM - 11:00 AM">9:30 AM - 11:00 AM</option>
+                                        <option value="11:00 AM - 12:30 PM">11:00 AM - 12:30 PM</option>
+                                        <option value="12:30 PM - 2:00 PM">12:30 PM - 2:00 PM</option>
+                                        <option value="3:00 PM - 4:30 PM">3:00 PM - 4:30 PM</option>
+                                        <option value="4:30 PM - 6:00 PM">4:30 PM - 6:00 PM</option>
+                                        <option value="6:00 PM - 7:30 PM">6:00 PM - 7:30 PM</option>
+                                        <option value="7:30 PM - 9:00 PM">7:30 PM - 9:00 PM</option>
+                                        <option value="9:00 PM - 10:30 PM">9:00 PM - 10:30 PM</option>
+                                    </select>
+                                </div>
+                                <div class="form-group mb-3">
+                                    <label for="day-of-week">Day of Week:</label>
+                                    <select id="day-of-week" name="day_of_week" class="form-control" required>
+                                        <option value="">Select Day</option>
+                                        <option value="SUNDAY">Sunday</option>
+                                        <option value="MONDAY">Monday</option>
+                                        <option value="TUESDAY">Tuesday</option>
+                                        <option value="WEDNESDAY">Wednesday</option>
+                                        <option value="THURSDAY">Thursday</option>
+                                        <option value="FRIDAY">Friday</option>
+                                        <option value="SATURDAY">Saturday</option>
+                                    </select>
+                                </div>
+                                <div class="form-group mb-3">
+                                    <label for="price">Price (৳):</label>
+                                    <input type="number" id="price" name="price" class="form-control" min="0" step="0.01" required placeholder="Enter price">
+                                </div>
+                                
+                                <!-- Duration Type Selection -->
+                                <div class="form-group mb-3">
+                                    <label>Price Duration:</label>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="duration_type" id="permanent" value="permanent" checked>
+                                        <label class="form-check-label" for="permanent">Permanent (Indefinite)</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="duration_type" id="temporary" value="temporary">
+                                        <label class="form-check-label" for="temporary">Temporary (With End Date)</label>
+                                    </div>
+                                </div>
+                                
+                                <!-- Date Range (shown only for temporary) -->
+                                <div id="date-range" style="display: none;">
+                                    <div class="form-group mb-3">
+                                        <label for="start-date">Start Date:</label>
+                                        <input type="date" id="start-date" name="start_date" class="form-control">
+                                    </div>
+                                    <div class="form-group mb-3">
+                                        <label for="end-date">End Date:</label>
+                                        <input type="date" id="end-date" name="end_date" class="form-control">
+                                    </div>
+                                </div>
+                                
+                                <div class="form-check mb-3">
+                                    <input type="checkbox" id="is-default" name="is_default" class="form-check-input" checked>
+                                    <label class="form-check-label" for="is-default">Set as Default Price</label>
+                                </div>
+                                
+                                <button type="submit" class="btn btn-primary w-100">Add/Update Slot Price</button>
+                            </form>
+                        </div>
+                    </div>
+                    <div id="slot-price-error" class="alert alert-danger mt-3" style="display: none;"></div>
+                    <div id="slot-price-success" class="alert alert-success mt-3" style="display: none;"></div>
                 </div>
-                <div class="form-group">
-                    <label for="day-of-week">Day of Week:</label>
-                    <select id="day-of-week" name="day_of_week" class="form-control" required>
-                        <option value="SUNDAY">Sunday</option>
-                        <option value="MONDAY">Monday</option>
-                        <option value="TUESDAY">Tuesday</option>
-                        <option value="WEDNESDAY">Wednesday</option>
-                        <option value="THURSDAY">Thursday</option>
-                        <option value="FRIDAY">Friday</option>
-                        <option value="SATURDAY">Saturday</option>
-                    </select>
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Quick Actions</h3>
+                        </div>
+                        <div class="card-body">
+                            <div class="d-grid gap-2">
+                                <button class="btn btn-outline-primary" onclick="setWeekendPrices()">Set Weekend Prices</button>
+                                <button class="btn btn-outline-primary" onclick="setWeekdayPrices()">Set Weekday Prices</button>
+                                <button class="btn btn-outline-secondary" onclick="resetToDefaults()">Reset All to Defaults</button>
+                            </div>
+                            <hr>
+                            <h5>Bulk Price Update</h5>
+                            <div class="input-group mb-2">
+                                <input type="number" id="bulk-price" class="form-control" placeholder="Price" min="0" step="0.01">
+                                <button class="btn btn-outline-warning" onclick="applyBulkPrice()">Apply to All</button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label for="price">Price:</label>
-                    <input type="number" id="price" name="price" class="form-control" required>
+            </div>
+        </div>
+        
+        <!-- Manage Time Slots Tab -->
+        <div class="tab-pane fade" id="manage-slots">
+            <div class="card">
+                <div class="card-header">
+                    <h3>Manage Time Slots</h3>
                 </div>
-                <div class="form-group">
-                    <label for="start-date">Start Date (optional):</label>
-                    <input type="date" id="start-date" name="start_date" class="form-control">
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h4>Add New Time Slot</h4>
+                            <form id="new-slot-form">
+                                <div class="form-group mb-3">
+                                    <label for="new-slot-time">Time Slot:</label>
+                                    <input type="text" id="new-slot-time" class="form-control" placeholder="e.g., 10:30 PM - 12:00 AM" required>
+                                </div>
+                                <div class="form-group mb-3">
+                                    <label for="default-price">Default Price (৳):</label>
+                                    <input type="number" id="default-price" class="form-control" min="0" step="0.01" required>
+                                </div>
+                                <button type="submit" class="btn btn-success">Add New Slot</button>
+                            </form>
+                        </div>
+                        <div class="col-md-6">
+                            <h4>Current Time Slots</h4>
+                            <div id="current-slots" class="list-group">
+                                <!-- Will be populated dynamically -->
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label for="end-date">End Date (optional):</label>
-                    <input type="date" id="end-date" name="end_date" class="form-control">
+            </div>
+        </div>
+        
+        <!-- View All Prices Tab -->
+        <div class="tab-pane fade" id="view-all">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h3>All Slot Prices</h3>
+                    <button class="btn btn-outline-primary" onclick="refreshPrices()">Refresh</button>
                 </div>
-                <div class="form-check">
-                    <input type="checkbox" id="is-default" name="is_default" class="form-check-input" checked>
-                    <label class="form-check-label" for="is-default">Default Price</label>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table id="all-prices-table" class="table table-dark table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Time Slot</th>
+                                    <th>Day</th>
+                                    <th>Price</th>
+                                    <th>Start Date</th>
+                                    <th>End Date</th>
+                                    <th>Type</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Will be populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
-                <button type="submit" class="btn btn-primary mt-3">Add/Update Slot Price</button>
-            </form>
-            <div id="slot-price-error" class="alert alert-danger mt-3" style="display: none;"></div>
+            </div>
         </div>
     </div>
     <div class="row mt-4">
         <div class="col-12">
-            <h2>Slot Price Summary</h2>
-            <div id="price-summary" class="price-summary">
-                <!-- Price summary will be inserted here dynamically -->
+            <div class="card">
+                <div class="card-header">
+                    <h3>Current Price Summary</h3>
+                </div>
+                <div class="card-body">
+                    <div id="price-summary" class="price-summary">
+                        <!-- Price summary will be inserted here dynamically -->
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -147,13 +280,35 @@
 <script>
     const slotPriceForm = document.getElementById('slot-price-form');
     const slotPriceError = document.getElementById('slot-price-error');
+    const slotPriceSuccess = document.getElementById('slot-price-success');
     const priceSummary = document.getElementById('price-summary');
+    const allPricesTable = document.getElementById('all-prices-table').getElementsByTagName('tbody')[0];
+    const newSlotForm = document.getElementById('new-slot-form');
+    const currentSlots = document.getElementById('current-slots');
     
     const dayOrder = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     const dayNames = {
         'Sunday': 'Sun', 'Monday': 'Mon', 'Tuesday': 'Tue', 'Wednesday': 'Wed',
         'Thursday': 'Thu', 'Friday': 'Fri', 'Saturday': 'Sat'
     };
+    
+    // Handle duration type change
+    document.querySelectorAll('input[name="duration_type"]').forEach(radio => {
+        radio.addEventListener('change', function() {
+            const dateRange = document.getElementById('date-range');
+            if (this.value === 'temporary') {
+                dateRange.style.display = 'block';
+                document.getElementById('start-date').required = true;
+                document.getElementById('end-date').required = true;
+            } else {
+                dateRange.style.display = 'none';
+                document.getElementById('start-date').required = false;
+                document.getElementById('end-date').required = false;
+                document.getElementById('start-date').value = '';
+                document.getElementById('end-date').value = '';
+            }
+        });
+    });
     
     function updatePriceSummary(data) {
         if (!data.success || !Array.isArray(data.slot_prices)) {
@@ -232,7 +387,17 @@
     
     slotPriceForm.addEventListener('submit', function(e) {
         e.preventDefault();
+        hideMessages();
+        
         const formData = new FormData(this);
+        const durationType = document.querySelector('input[name="duration_type"]:checked').value;
+        
+        // Clear dates if permanent
+        if (durationType === 'permanent') {
+            formData.delete('start_date');
+            formData.delete('end_date');
+        }
+        
         fetch('/add_update_slot_price', {
             method: 'POST',
             body: formData
@@ -240,21 +405,223 @@
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                alert('Slot price added/updated successfully');
+                showSuccess('Slot price added/updated successfully!');
                 slotPriceForm.reset();
+                document.getElementById('permanent').checked = true;
+                document.getElementById('date-range').style.display = 'none';
                 fetchSlotPrices();
+                populateAllPricesTable();
             } else {
                 throw new Error(data.message || 'Unknown error occurred');
             }
         })
         .catch(error => {
             console.error('Error adding/updating slot price:', error);
-            slotPriceError.textContent = 'Error adding/updating slot price: ' + error.message;
-            slotPriceError.style.display = 'block';
+            showError('Error adding/updating slot price: ' + error.message);
         });
     });
     
-    // Fetch slot prices on page load
+    // Helper functions for messages
+    function showError(message) {
+        slotPriceError.textContent = message;
+        slotPriceError.style.display = 'block';
+        slotPriceSuccess.style.display = 'none';
+    }
+    
+    function showSuccess(message) {
+        slotPriceSuccess.textContent = message;
+        slotPriceSuccess.style.display = 'block';
+        slotPriceError.style.display = 'none';
+    }
+    
+    function hideMessages() {
+        slotPriceError.style.display = 'none';
+        slotPriceSuccess.style.display = 'none';
+    }
+    
+    // New functions for enhanced functionality
+    function populateAllPricesTable() {
+        fetch('/list_slot_prices')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    const tbody = allPricesTable;
+                    tbody.innerHTML = '';
+                    
+                    data.slot_prices.forEach(sp => {
+                        const row = tbody.insertRow();
+                        row.innerHTML = `
+                            <td>${sp.time_slot}</td>
+                            <td>${sp.day_of_week}</td>
+                            <td>৳${sp.price}</td>
+                            <td>${sp.start_date || 'N/A'}</td>
+                            <td>${sp.end_date || 'Indefinite'}</td>
+                            <td><span class="badge ${sp.is_default ? 'bg-primary' : 'bg-warning'}">${sp.is_default ? 'Default' : 'Custom'}</span></td>
+                            <td>
+                                <button class="btn btn-sm btn-outline-warning me-1" onclick="editPrice(${sp.id}, '${sp.time_slot}', '${sp.day_of_week}', ${sp.price}, '${sp.start_date}', '${sp.end_date}', ${sp.is_default})">Edit</button>
+                                <button class="btn btn-sm btn-outline-danger" onclick="deletePrice(${sp.id})">Delete</button>
+                            </td>
+                        `;
+                    });
+                }
+            })
+            .catch(error => console.error('Error loading all prices:', error));
+    }
+    
+    function editPrice(id, timeSlot, dayOfWeek, price, startDate, endDate, isDefault) {
+        // Switch to add/update tab
+        document.getElementById('add-price-tab').click();
+        
+        // Populate form
+        document.getElementById('time-slot').value = timeSlot;
+        document.getElementById('day-of-week').value = dayOfWeek;
+        document.getElementById('price').value = price;
+        document.getElementById('is-default').checked = isDefault;
+        
+        if (startDate && startDate !== 'null' && endDate && endDate !== 'null') {
+            document.getElementById('temporary').checked = true;
+            document.getElementById('date-range').style.display = 'block';
+            document.getElementById('start-date').value = startDate;
+            document.getElementById('end-date').value = endDate;
+        } else {
+            document.getElementById('permanent').checked = true;
+            document.getElementById('date-range').style.display = 'none';
+        }
+    }
+    
+    function deletePrice(id) {
+        if (confirm('Are you sure you want to delete this price entry?')) {
+            fetch(`/delete_slot_price/${id}`, { method: 'DELETE' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        showSuccess('Price deleted successfully!');
+                        fetchSlotPrices();
+                        populateAllPricesTable();
+                    } else {
+                        showError('Error deleting price: ' + data.message);
+                    }
+                })
+                .catch(error => showError('Error deleting price: ' + error.message));
+        }
+    }
+    
+    function refreshPrices() {
+        fetchSlotPrices();
+        populateAllPricesTable();
+        showSuccess('Prices refreshed successfully!');
+    }
+    
+    // Quick action functions
+    function setWeekendPrices() {
+        const price = prompt('Enter weekend price (৳):');
+        if (price && !isNaN(price)) {
+            applyPriceToMultipleDays(['SATURDAY', 'SUNDAY'], parseFloat(price));
+        }
+    }
+    
+    function setWeekdayPrices() {
+        const price = prompt('Enter weekday price (৳):');
+        if (price && !isNaN(price)) {
+            applyPriceToMultipleDays(['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY'], parseFloat(price));
+        }
+    }
+    
+    function applyBulkPrice() {
+        const price = document.getElementById('bulk-price').value;
+        if (price && !isNaN(price)) {
+            if (confirm(`Apply price ৳${price} to all time slots and days?`)) {
+                applyPriceToMultipleDays(['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'], parseFloat(price));
+            }
+        } else {
+            showError('Please enter a valid price');
+        }
+    }
+    
+    function applyPriceToMultipleDays(days, price) {
+        const timeSlots = [
+            '9:30 AM - 11:00 AM', '11:00 AM - 12:30 PM', '12:30 PM - 2:00 PM',
+            '3:00 PM - 4:30 PM', '4:30 PM - 6:00 PM', '6:00 PM - 7:30 PM',
+            '7:30 PM - 9:00 PM', '9:00 PM - 10:30 PM'
+        ];
+        
+        let promises = [];
+        days.forEach(day => {
+            timeSlots.forEach(slot => {
+                const formData = new FormData();
+                formData.append('time_slot', slot);
+                formData.append('day_of_week', day);
+                formData.append('price', price);
+                formData.append('is_default', 'true');
+                
+                promises.push(
+                    fetch('/add_update_slot_price', {
+                        method: 'POST',
+                        body: formData
+                    })
+                );
+            });
+        });
+        
+        Promise.all(promises)
+            .then(() => {
+                showSuccess('Bulk price update completed!');
+                fetchSlotPrices();
+                populateAllPricesTable();
+                document.getElementById('bulk-price').value = '';
+            })
+            .catch(error => showError('Error during bulk update: ' + error.message));
+    }
+    
+    function resetToDefaults() {
+        if (confirm('Reset all prices to default values? This will remove all custom pricing.')) {
+            // This would need a backend endpoint to reset to defaults
+            showError('Reset to defaults feature needs backend implementation');
+        }
+    }
+    
+    // Populate current slots in manage slots tab
+    function populateCurrentSlots() {
+        const slots = [
+            '9:30 AM - 11:00 AM', '11:00 AM - 12:30 PM', '12:30 PM - 2:00 PM',
+            '3:00 PM - 4:30 PM', '4:30 PM - 6:00 PM', '6:00 PM - 7:30 PM',
+            '7:30 PM - 9:00 PM', '9:00 PM - 10:30 PM'
+        ];
+        
+        currentSlots.innerHTML = '';
+        slots.forEach(slot => {
+            const item = document.createElement('div');
+            item.className = 'list-group-item d-flex justify-content-between align-items-center';
+            item.innerHTML = `
+                <span>${slot}</span>
+                <button class="btn btn-sm btn-outline-danger" onclick="removeSlot('${slot}')">Remove</button>
+            `;
+            currentSlots.appendChild(item);
+        });
+    }
+    
+    function removeSlot(slot) {
+        if (confirm(`Remove time slot "${slot}"? This will delete all associated prices.`)) {
+            // This would need backend implementation
+            showError('Remove slot feature needs backend implementation');
+        }
+    }
+    
+    // Handle new slot form
+    newSlotForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        const slotTime = document.getElementById('new-slot-time').value;
+        const defaultPrice = document.getElementById('default-price').value;
+        
+        if (slotTime && defaultPrice) {
+            // This would need backend implementation to add new slots
+            showError('Add new slot feature needs backend implementation');
+        }
+    });
+    
+    // Initialize page
     fetchSlotPrices();
+    populateAllPricesTable();
+    populateCurrentSlots();
     </script>
 {% endblock %}

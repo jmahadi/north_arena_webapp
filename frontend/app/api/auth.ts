@@ -7,11 +7,34 @@ interface LoginResponse {
 }
 
 export interface DashboardData {
+  // Basic metrics
   bookings_this_month: number;
   upcoming_bookings: number;
   revenue_this_month: number;
   revenue_change: number;
   avg_bookings_per_day: number;
+  
+  // Enhanced metrics
+  total_bookings: number;
+  total_revenue: number;
+  bookings_last_week: number;
+  revenue_last_30_days: number;
+  todays_bookings: number;
+  avg_booking_value: number;
+  pending_transactions: number;
+  completed_transactions: number;
+  
+  // Chart data
+  daily_revenue: Array<{ date: string; revenue: number }>;
+  daily_bookings: Array<{ date: string; bookings: number }>;
+  popular_time_slots: Array<{ time_slot: string; count: number }>;
+  payment_breakdown: Array<{ method: string; amount: number }>;
+  recent_bookings: Array<{ 
+    name: string; 
+    booking_date: string; 
+    time_slot: string; 
+    created_at: string; 
+  }>;
 }
 
 export const login = async (email: string, password: string): Promise<LoginResponse> => {
