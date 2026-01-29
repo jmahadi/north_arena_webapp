@@ -297,65 +297,72 @@ const TransactionSummaryTable: React.FC<TransactionSummaryTableProps> = ({
       );
     }
   
-    // Otherwise show the transaction details table
+    // Otherwise show the transaction details in card layout
     return (
       <div className="py-4 px-6 bg-gray-800">
         <h4 className="text-lg font-semibold mb-4 text-white">Transaction History</h4>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="text-gray-400 text-sm">
-                <th className="text-left pb-2">Date</th>
-                <th className="text-left pb-2">Type</th>
-                <th className="text-left pb-2">Method</th>
-                <th className="text-right pb-2">Amount</th>
-                <th className="text-left pb-2">User</th>
-                <th className="text-center pb-2">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {details.map((transaction) => (
-                <tr key={transaction.id} className="border-t border-gray-700">
-                  <td className="py-2 text-gray-300">
-                    {format(new Date(transaction.created_at), 'MMM dd, yyyy HH:mm')}
-                  </td>
-                  <td className="py-2">
-                    <span className={`px-2 py-1 rounded text-xs ${
-                      transaction.transaction_type === 'BOOKING_PAYMENT' ? 'bg-blue-500' :
-                      transaction.transaction_type === 'SLOT_PAYMENT' ? 'bg-green-500' :
-                      transaction.transaction_type === 'DISCOUNT' ? 'bg-yellow-500' :
-                      'bg-red-500'
+        <div className="space-y-3">
+          {details.map((transaction) => (
+            <div key={transaction.id} className="bg-black/20 border border-gray-700 rounded-lg p-3">
+              <div className="grid grid-cols-2 gap-3">
+                {/* Left Column */}
+                <div className="space-y-2">
+                  <div>
+                    <div className="text-xs text-gray-400">Date</div>
+                    <div className="text-sm text-gray-300">
+                      {format(new Date(transaction.created_at), 'MMM dd, yyyy')}
+                    </div>
+                    <div className="text-xs text-gray-400">
+                      {format(new Date(transaction.created_at), 'HH:mm')}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-gray-400">Type</div>
+                    <span className={`inline-block px-2 py-1 rounded text-xs ${
+                      transaction.transaction_type === 'BOOKING_PAYMENT' ? 'bg-red-500 text-white' :
+                      transaction.transaction_type === 'SLOT_PAYMENT' ? 'bg-green-500 text-white' :
+                      transaction.transaction_type === 'DISCOUNT' ? 'bg-yellow-500 text-white' :
+                      'bg-red-500 text-white'
                     }`}>
-                      {transaction.transaction_type}
+                      {transaction.transaction_type.replace('_', ' ')}
                     </span>
-                  </td>
-                  <td className="py-2">
-                    <span className={`px-2 py-1 rounded text-xs ${
-                      transaction.payment_method === 'CASH' ? 'bg-green-500' :
-                      transaction.payment_method === 'BKASH' ? 'bg-pink-500' :
-                      transaction.payment_method === 'NAGAD' ? 'bg-orange-500' :
-                      transaction.payment_method === 'CARD' ? 'bg-blue-500' :
-                      'bg-purple-500'
+                  </div>
+                  <div>
+                    <div className="text-xs text-gray-400">Method</div>
+                    <span className={`inline-block px-2 py-1 rounded text-xs ${
+                      transaction.payment_method === 'CASH' ? 'bg-green-500 text-white' :
+                      transaction.payment_method === 'BKASH' ? 'bg-pink-500 text-white' :
+                      transaction.payment_method === 'NAGAD' ? 'bg-orange-500 text-white' :
+                      transaction.payment_method === 'CARD' ? 'bg-blue-500 text-white' :
+                      'bg-purple-500 text-white'
                     }`}>
                       {transaction.payment_method}
                     </span>
-                  </td>
-                  <td className="py-2 text-right text-white">${transaction.amount.toFixed(2)}</td>
-                  <td className="py-2 text-gray-300 whitespace-nowrap overflow-hidden text-ellipsis max-w-[100px]">
-                    {transaction.creator || "Admin"}
-                  </td>
-                  <td className="py-2 text-center">
+                  </div>
+                </div>
+
+                {/* Right Column */}
+                <div className="space-y-2 text-right">
+                  <div>
+                    <div className="text-xs text-gray-400">Amount</div>
+                    <div className="text-lg font-bold text-white">${transaction.amount.toFixed(2)}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-gray-400">User</div>
+                    <div className="text-sm text-gray-300">{transaction.creator || "Admin"}</div>
+                  </div>
+                  <div>
                     <button
                       onClick={() => handleEditClick(transaction)}
-                      className="w-full bg-primary text-white px-2 py-1 rounded text-xs hover:bg-primary-hover"
+                      className="w-full bg-orange-600 text-white px-3 py-1.5 rounded text-sm hover:bg-orange-700 transition"
                     >
                       Edit
                     </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     );
@@ -397,7 +404,7 @@ const TransactionSummaryTable: React.FC<TransactionSummaryTableProps> = ({
               <button
                 key={range.label}
                 onClick={range.onClick}
-                className="px-3 py-1 bg-gray-700 text-gray-300 rounded hover:bg-gray-600 transition duration-300"
+                className="px-3 py-1 bg-black/20 border border-gray-700 text-gray-300 rounded hover:bg-gray-700 transition duration-300"
               >
                 {range.label}
               </button>
@@ -409,14 +416,14 @@ const TransactionSummaryTable: React.FC<TransactionSummaryTableProps> = ({
               type="date"
               value={currentDateRange.startDate}
               onChange={(e) => handleDateChange('startDate', e.target.value)}
-              className="p-2 rounded bg-gray-700 border-gray-600 text-white focus:ring-2 focus:ring-primary"
+              className="p-2 rounded bg-black/20 border border-gray-700 text-white focus:border-orange-500 focus:outline-none transition-colors"
             />
             <span className="text-gray-400">to</span>
             <input
               type="date"
               value={currentDateRange.endDate}
               onChange={(e) => handleDateChange('endDate', e.target.value)}
-              className="p-2 rounded bg-gray-700 border-gray-600 text-white focus:ring-2 focus:ring-primary"
+              className="p-2 rounded bg-black/20 border border-gray-700 text-white focus:border-orange-500 focus:outline-none transition-colors"
             />
           </div>
         </div>
@@ -439,7 +446,7 @@ const TransactionSummaryTable: React.FC<TransactionSummaryTableProps> = ({
               filteredSummaries.map((summary) => (
                 <div 
                   key={`${summary.booking_date}_${summary.slot}`}
-                  className="mb-4 bg-surface bg-opacity-50 rounded-lg overflow-hidden"
+                  className="mb-4 bg-black/40 border border-gray-800 rounded-lg overflow-hidden"
                 >
                   {/* Summary card */}
                   <div className="p-4 border-b border-gray-700">

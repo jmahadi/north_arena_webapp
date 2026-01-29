@@ -28,6 +28,12 @@ class User(Base):
     def __repr__(self):
         return f'<User {self.username}>'
 
+
+class BookingType(enum.Enum):
+    NORMAL = "NORMAL"
+    ACADEMY = "ACADEMY"
+
+
 class Booking(Base):
     __tablename__ = "bookings"
 
@@ -37,6 +43,14 @@ class Booking(Base):
     phone = Column(String, nullable=False)
     booking_date  = Column(Date, nullable=False)
     time_slot = Column(String, nullable=False)
+    booking_type = Column(Enum(BookingType, name='bookingtype'), default=BookingType.NORMAL, nullable=False)
+    academy_start_date = Column(Date, nullable=True)
+    academy_end_date = Column(Date, nullable=True)
+    academy_month_days = Column(Integer, nullable=True)  # Number of days in the academy booking period
+    academy_days_of_week = Column(String, nullable=True)  # Comma-separated days: e.g., "MONDAY,WEDNESDAY,FRIDAY"
+    academy_notes = Column(String, nullable=True)
+    is_cancelled = Column(Boolean, default=False)  # Soft delete flag for cancelled bookings
+    cancelled_at = Column(DateTime, nullable=True)  # Timestamp when booking was cancelled
     created_at = Column(DateTime, default=datetime.now(timezone.utc).replace(tzinfo=None))
     updated_at = Column(DateTime, default=datetime.now(timezone.utc).replace(tzinfo=None), onupdate=datetime.now(timezone.utc).replace(tzinfo=None))
     last_modified_by = Column(Integer, ForeignKey('users.id'), nullable=True)
@@ -48,7 +62,7 @@ class Booking(Base):
 
     def __repr__(self):
         return f'<Booking {self.name} for {self.date} at {self.time_slot}>'
-    
+
 
 class TransactionStatus(enum.Enum):
     PENDING = "Pending"
@@ -140,9 +154,10 @@ class SlotPrice(Base):
     time_slot = Column(String, nullable=False)
     day_of_week = Column(Enum(DayOfWeek), nullable=False)
     price = Column(Float, nullable=False)
+    booking_type = Column(Enum(BookingType, name='bookingtype'), nullable=True)  # NULL means applies to NORMAL bookings only
     start_date = Column(Date, nullable=True)  # For special events or promotions
     end_date = Column(Date, nullable=True)    # For special events or promotions
     is_default = Column(Boolean, default=True)  # To distinguish between default and special prices
 
     def __repr__(self):
-        return f"<SlotPrice(time_slot='{self.time_slot}', day_of_week='{self.day_of_week}', price={self.price})>"
+        return f"<SlotPrice(time_slot='{self.time_slot}', day_of_week='{self.day_of_week}', price={self.price}, booking_type={self.booking_type})>"

@@ -68,9 +68,9 @@ const LoginForm = () => {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form onSubmit={handleSubmit} className="space-y-4">
       <div>
-        <label htmlFor="email" className="block text-sm font-medium text-gray-300">
+        <label htmlFor="email" className="block text-sm font-medium text-gray-300 mb-1">
           Email
         </label>
         <input
@@ -78,14 +78,14 @@ const LoginForm = () => {
           id="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="mt-1 block w-full px-3 py-2 bg-[#444444] border border-[#555555] rounded-md text-white focus:outline-none focus:ring-2 focus:ring-[#DC6000]"
+          className="block w-full px-3 py-2 bg-black/20 border border-gray-700 rounded-md text-white focus:outline-none focus:border-orange-500 transition-colors"
           required
           // NEW: Disable input during loading
           disabled={isLoading}
         />
       </div>
       <div>
-        <label htmlFor="password" className="block text-sm font-medium text-gray-300">
+        <label htmlFor="password" className="block text-sm font-medium text-gray-300 mb-1">
           Password
         </label>
         <input
@@ -93,18 +93,18 @@ const LoginForm = () => {
           id="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          className="mt-1 block w-full px-3 py-2 bg-[#444444] border border-[#555555] rounded-md text-white focus:outline-none focus:ring-2 focus:ring-[#DC6000]"
+          className="block w-full px-3 py-2 bg-black/20 border border-gray-700 rounded-md text-white focus:outline-none focus:border-orange-500 transition-colors"
           required
           // NEW: Disable input during loading
-          disabled={isLoading}          
+          disabled={isLoading}
         />
       </div>
-      {error && <p className="text-red-500 text-sm">{error}</p>}
+      {error && <p className="text-red-500 text-xs">{error}</p>}
       <button
         type="submit"
-        className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-[#DC6000] hover:bg-[#FF7000] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#DC6000]"
+        className="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-orange-600 hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 transition-colors"
         // NEW: Disable input during loading
-        disabled={isLoading} 
+        disabled={isLoading}
       >
         {/* NEW: Show loading state in button */}
         {isLoading ? 'Signing in...' : 'Sign In'}

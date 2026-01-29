@@ -22,12 +22,16 @@ export const fetchBookings = async (startDate: string, endDate: string) => {
 
   // UPDATED: Add startDate and endDate parameters to addBooking
   export const addBooking = async (
-    name: string, 
-    phone: string, 
-    bookingDate: string, 
+    name: string,
+    phone: string,
+    bookingDate: string,
     timeSlot: string,
     startDate?: string,
-    endDate?: string
+    endDate?: string,
+    bookingType?: 'NORMAL' | 'ACADEMY',
+    academyStartDate?: string,
+    academyEndDate?: string,
+    academyDaysOfWeek?: string[]
   ) => {
   const formData = new FormData();
   formData.append('name', name);
@@ -38,6 +42,19 @@ export const fetchBookings = async (startDate: string, endDate: string) => {
   // Add date range parameters if provided
   if (startDate) formData.append('start_date', startDate);
   if (endDate) formData.append('end_date', endDate);
+
+  // Add booking type parameter
+  if (bookingType) {
+    formData.append('booking_type', bookingType);
+  }
+
+  // Add academy/bulk booking date parameters
+  // These are used for both ACADEMY bookings and bulk NORMAL bookings
+  if (academyStartDate) formData.append('academy_start_date', academyStartDate);
+  if (academyEndDate) formData.append('academy_end_date', academyEndDate);
+  if (academyDaysOfWeek && academyDaysOfWeek.length > 0) {
+    formData.append('academy_days_of_week', academyDaysOfWeek.join(','));
+  }
 
   try {
     const response = await api.post('/api/add_booking', formData, {
@@ -54,13 +71,17 @@ export const fetchBookings = async (startDate: string, endDate: string) => {
 };
 
 export const updateBooking = async (
-  bookingId: number, 
-  name: string, 
-  phone: string, 
-  bookingDate: string, 
+  bookingId: number,
+  name: string,
+  phone: string,
+  bookingDate: string,
   timeSlot: string,
   startDate?: string,  // Added optional startDate parameter
-  endDate?: string     // Added optional endDate parameter
+  endDate?: string,    // Added optional endDate parameter
+  bookingType?: 'NORMAL' | 'ACADEMY',
+  academyStartDate?: string,
+  academyEndDate?: string,
+  academyDaysOfWeek?: string[]
 ) => {
   const formData = new FormData();
   formData.append('booking_id', bookingId.toString());
@@ -72,6 +93,19 @@ export const updateBooking = async (
   // Add date range parameters if provided
   if (startDate) formData.append('start_date', startDate);
   if (endDate) formData.append('end_date', endDate);
+
+  // Add booking type parameter
+  if (bookingType) {
+    formData.append('booking_type', bookingType);
+  }
+
+  // Add academy/bulk booking date parameters
+  // These are used for both ACADEMY bookings and bulk NORMAL bookings
+  if (academyStartDate) formData.append('academy_start_date', academyStartDate);
+  if (academyEndDate) formData.append('academy_end_date', academyEndDate);
+  if (academyDaysOfWeek && academyDaysOfWeek.length > 0) {
+    formData.append('academy_days_of_week', academyDaysOfWeek.join(','));
+  }
 
   try {
     const response = await api.post('/api/update_booking', formData, {
@@ -87,13 +121,48 @@ export const updateBooking = async (
   }
 };
 
-export const deleteBooking = async (bookingId: number, startDate?: string, endDate?: string) => {
-  // Create params object for date range
-  const params: Record<string, string> = {};
+export interface DeleteBookingOptions {
+  startDate?: string;
+  endDate?: string;
+  retainPayments?: boolean;
+}
+
+export interface DeleteBookingResponse {
+  success: boolean;
+  message: string;
+  bookingsData: Record<string, any>;
+  was_soft_deleted: boolean;
+}
+
+export const deleteBooking = async (
+  bookingId: number,
+  startDate?: string,
+  endDate?: string,
+  retainPayments: boolean = true
+): Promise<DeleteBookingResponse> => {
+  // Create params object for date range and retain_payments flag
+  const params: Record<string, string | boolean> = {
+    retain_payments: retainPayments
+  };
   if (startDate) params['start_date'] = startDate;
   if (endDate) params['end_date'] = endDate;
 
   // Pass params in the request
   const response = await api.delete(`/api/delete_booking/${bookingId}`, { params });
   return response.data;
+};
+
+// Helper function to check if booking has transactions before deleting
+export const checkBookingHasTransactions = async (bookingId: number): Promise<boolean> => {
+  try {
+    const response = await api.get('/transaction_details', {
+      params: { booking_id: bookingId }
+    });
+    return response.data.transactions && response.data.transactions.length > 0;
+  } catch (error: any) {
+    if (error.response?.status === 404) {
+      return false;
+    }
+    throw error;
+  }
 };

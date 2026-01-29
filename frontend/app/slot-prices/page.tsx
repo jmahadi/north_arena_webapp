@@ -701,140 +701,163 @@ export default function SlotPricesPage() {
                 Refresh
               </button>
             </div>
-            
-            {/* All Prices Table */}
+
+            {/* Unified Price Matrix - Weekdays */}
             <div className="mb-8">
-              <h4 className="text-lg font-medium text-orange-400 mb-4">All Current Prices</h4>
+              <h4 className="text-md font-medium text-white mb-4 flex items-center">
+                <span className="w-3 h-3 bg-orange-500 rounded mr-2"></span>
+                Weekdays (Mon - Fri)
+              </h4>
               <div className="overflow-x-auto">
-                <table className="w-full text-white">
+                <table className="w-full text-white text-sm">
                   <thead>
-                    <tr className="border-b border-gray-800">
-                      <th className="text-left py-3 px-4 text-gray-400 font-medium text-sm">Time Slot</th>
-                      <th className="text-left py-3 px-4 text-gray-400 font-medium text-sm">Day</th>
-                      <th className="text-left py-3 px-4 text-gray-400 font-medium text-sm">Price</th>
-                      <th className="text-left py-3 px-4 text-gray-400 font-medium text-sm">Start</th>
-                      <th className="text-left py-3 px-4 text-gray-400 font-medium text-sm">End</th>
-                      <th className="text-left py-3 px-4 text-gray-400 font-medium text-sm">Type</th>
-                      <th className="text-left py-3 px-4 text-gray-400 font-medium text-sm">Actions</th>
+                    <tr className="border-b border-gray-700 bg-gray-800/50">
+                      <th className="text-left py-3 px-4 text-gray-400 font-medium">Time Slot</th>
+                      <th className="text-center py-3 px-3 text-gray-400 font-medium">Mon</th>
+                      <th className="text-center py-3 px-3 text-gray-400 font-medium">Tue</th>
+                      <th className="text-center py-3 px-3 text-gray-400 font-medium">Wed</th>
+                      <th className="text-center py-3 px-3 text-gray-400 font-medium">Thu</th>
+                      <th className="text-center py-3 px-3 text-gray-400 font-medium">Fri</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {slotPrices.map((sp) => (
-                      <tr key={sp.id} className="border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors">
-                        <td className="py-3 px-4 text-sm">{sp.time_slot}</td>
-                        <td className="py-3 px-4 text-sm">{sp.day_of_week}</td>
-                        <td className="py-3 px-4 text-sm font-medium">৳{sp.price}</td>
-                        <td className="py-3 px-4 text-sm text-gray-400">{sp.start_date || 'N/A'}</td>
-                        <td className="py-3 px-4 text-sm text-gray-400">{sp.end_date || 'Indefinite'}</td>
-                        <td className="py-3 px-4">
-                          <span className={`px-2 py-1 rounded-sm text-xs ${sp.is_default ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-orange-500/20 text-orange-400 border border-orange-500/30'}`}>
-                            {sp.is_default ? 'Default' : 'Custom'}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4">
-                          <div className="flex space-x-2">
-                            <button
-                              onClick={() => handleEdit(sp)}
-                              className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1 rounded-sm text-xs transition-colors"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              onClick={() => handleDelete(sp.id)}
-                              className="bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 px-3 py-1 rounded-sm text-xs transition-colors"
-                            >
-                              Delete
-                            </button>
-                          </div>
+                    {availableTimeSlots.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="py-8 text-center text-gray-500">
+                          No time slots available. Add slots in the "Manage Slots" tab.
                         </td>
                       </tr>
-                    ))}
+                    ) : (
+                      availableTimeSlots.map((slot) => (
+                        <tr key={slot} className="border-b border-gray-800/50 hover:bg-gray-800/30">
+                          <td className="py-3 px-4 font-medium text-gray-300">
+                            {slot}
+                          </td>
+                          {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'].map(day => {
+                            const priceEntry = slotPrices.find(sp => sp.time_slot === slot && sp.day_of_week === day);
+                            return (
+                              <td key={day} className="py-3 px-3 text-center">
+                                {priceEntry ? (
+                                  <button
+                                    onClick={() => handleEdit(priceEntry)}
+                                    className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                                      priceEntry.is_default
+                                        ? 'bg-gray-700 hover:bg-gray-600 text-white'
+                                        : 'bg-orange-600/20 hover:bg-orange-600/30 text-orange-400 border border-orange-500/30'
+                                    }`}
+                                    title={priceEntry.start_date ? `Custom: ${priceEntry.start_date} - ${priceEntry.end_date}` : 'Default price (click to edit)'}
+                                  >
+                                    ৳{priceEntry.price}
+                                  </button>
+                                ) : (
+                                  <span className="text-gray-600">-</span>
+                                )}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
             </div>
 
-            {/* Improved Hierarchical Overview */}
-            <div>
-              <h4 className="text-lg font-medium text-orange-400 mb-6">Pricing Hierarchy</h4>
-              
-              {Object.entries(getGroupedPrices()).map(([dayType, days]) => {
-                const daySlots = getDaySlots(availableTimeSlots);
-                const nightSlots = getNightSlots(availableTimeSlots);
-                
-                return (
-                  <div key={dayType} className="mb-8 bg-gray-800/20 p-6 rounded-lg border border-gray-700">
-                    <div className="flex items-center justify-between mb-6">
-                      <h5 className="text-xl font-medium text-white capitalize">{dayType}s</h5>
-                      <div className="text-sm text-gray-400">
-                        Day Slots: {daySlots.length} | Night Slots: {nightSlots.length}
-                      </div>
-                    </div>
-                    
-                    {/* Day Time Section */}
-                    <div className="mb-6">
-                      <h6 className="text-md font-medium text-orange-300 mb-4 flex items-center">
-                        <span className="w-3 h-3 bg-yellow-400 rounded-full mr-2"></span>
-                        Day Time ({daySlots.length > 0 ? `${daySlots[0]?.split(' - ')[0]} - ${daySlots[daySlots.length-1]?.split(' - ')[1]}` : 'No day slots'})
-                      </h6>
-                      <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-7 gap-3">
-                        {Object.entries(days).map(([day, prices]) => (
-                          <div key={`${day}-day`} className="bg-yellow-500/10 p-3 rounded border border-yellow-500/30">
-                            <div className="text-center">
-                              <div className="text-xs text-yellow-300 font-medium mb-1">{day.slice(0,3).toUpperCase()}</div>
-                              <div className="text-sm text-white font-medium">৳{prices.day > 0 ? prices.day.toFixed(0) : 'N/A'}</div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                    
-                    {/* Night Time Section */}
-                    <div>
-                      <h6 className="text-md font-medium text-blue-300 mb-4 flex items-center">
-                        <span className="w-3 h-3 bg-blue-400 rounded-full mr-2"></span>
-                        Night Time ({nightSlots.length > 0 ? `${nightSlots[0]?.split(' - ')[0]} - ${nightSlots[nightSlots.length-1]?.split(' - ')[1]}` : 'No night slots'})
-                      </h6>
-                      <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-7 gap-3">
-                        {Object.entries(days).map(([day, prices]) => (
-                          <div key={`${day}-night`} className="bg-blue-500/10 p-3 rounded border border-blue-500/30">
-                            <div className="text-center">
-                              <div className="text-xs text-blue-300 font-medium mb-1">{day.slice(0,3).toUpperCase()}</div>
-                              <div className="text-sm text-white font-medium">৳{prices.night > 0 ? prices.night.toFixed(0) : 'N/A'}</div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-              
-              {/* Quick Stats */}
-              <div className="mt-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="bg-green-500/10 p-4 rounded border border-green-500/30">
-                  <div className="text-center">
-                    <div className="text-sm text-green-300 mb-1">Total Slots</div>
-                    <div className="text-lg text-white font-medium">{availableTimeSlots.length}</div>
-                  </div>
+            {/* Unified Price Matrix - Weekends */}
+            <div className="mb-8">
+              <h4 className="text-md font-medium text-white mb-4 flex items-center">
+                <span className="w-3 h-3 bg-orange-500 rounded mr-2"></span>
+                Weekends (Sat - Sun)
+              </h4>
+              <div className="overflow-x-auto">
+                <table className="w-full text-white text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-700 bg-gray-800/50">
+                      <th className="text-left py-3 px-4 text-gray-400 font-medium">Time Slot</th>
+                      <th className="text-center py-3 px-4 text-gray-400 font-medium">Saturday</th>
+                      <th className="text-center py-3 px-4 text-gray-400 font-medium">Sunday</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {availableTimeSlots.length === 0 ? (
+                      <tr>
+                        <td colSpan={3} className="py-8 text-center text-gray-500">
+                          No time slots available.
+                        </td>
+                      </tr>
+                    ) : (
+                      availableTimeSlots.map((slot) => (
+                        <tr key={slot} className="border-b border-gray-800/50 hover:bg-gray-800/30">
+                          <td className="py-3 px-4 font-medium text-gray-300">
+                            {slot}
+                          </td>
+                          {['Saturday', 'Sunday'].map(day => {
+                            const priceEntry = slotPrices.find(sp => sp.time_slot === slot && sp.day_of_week === day);
+                              return (
+                                <td key={day} className="py-3 px-4 text-center">
+                                  {priceEntry ? (
+                                    <button
+                                      onClick={() => handleEdit(priceEntry)}
+                                      className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
+                                        priceEntry.is_default
+                                          ? 'bg-gray-700 hover:bg-gray-600 text-white'
+                                          : 'bg-orange-600/20 hover:bg-orange-600/30 text-orange-400 border border-orange-500/30'
+                                      }`}
+                                      title={priceEntry.start_date ? `Custom: ${priceEntry.start_date} - ${priceEntry.end_date}` : 'Default price (click to edit)'}
+                                    >
+                                      ৳{priceEntry.price}
+                                    </button>
+                                  ) : (
+                                    <span className="text-gray-600">-</span>
+                                  )}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))
+                      )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Legend */}
+            <div className="flex items-center gap-6 text-sm text-gray-400 mb-6">
+              <div className="flex items-center gap-2">
+                <div className="px-2 py-1 rounded bg-gray-700 text-white text-xs">৳2500</div>
+                <span>Default price</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="px-2 py-1 rounded bg-orange-600/20 text-orange-400 border border-orange-500/30 text-xs">৳3000</div>
+                <span>Custom/temporary price</span>
+              </div>
+              <div className="text-gray-500 text-xs ml-4">Click any price to edit</div>
+            </div>
+
+            {/* Quick Stats */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="bg-gray-800/50 p-4 rounded border border-gray-700">
+                <div className="text-center">
+                  <div className="text-sm text-gray-400 mb-1">Total Slots</div>
+                  <div className="text-lg text-white font-medium">{availableTimeSlots.length}</div>
                 </div>
-                <div className="bg-yellow-500/10 p-4 rounded border border-yellow-500/30">
-                  <div className="text-center">
-                    <div className="text-sm text-yellow-300 mb-1">Day Slots</div>
-                    <div className="text-lg text-white font-medium">{getDaySlots(availableTimeSlots).length}</div>
-                  </div>
+              </div>
+              <div className="bg-gray-800/50 p-4 rounded border border-gray-700">
+                <div className="text-center">
+                  <div className="text-sm text-gray-400 mb-1">Day Slots</div>
+                  <div className="text-lg text-white font-medium">{getDaySlots(availableTimeSlots).length}</div>
                 </div>
-                <div className="bg-blue-500/10 p-4 rounded border border-blue-500/30">
-                  <div className="text-center">
-                    <div className="text-sm text-blue-300 mb-1">Night Slots</div>
-                    <div className="text-lg text-white font-medium">{getNightSlots(availableTimeSlots).length}</div>
-                  </div>
+              </div>
+              <div className="bg-gray-800/50 p-4 rounded border border-gray-700">
+                <div className="text-center">
+                  <div className="text-sm text-gray-400 mb-1">Night Slots</div>
+                  <div className="text-lg text-white font-medium">{getNightSlots(availableTimeSlots).length}</div>
                 </div>
-                <div className="bg-purple-500/10 p-4 rounded border border-purple-500/30">
-                  <div className="text-center">
-                    <div className="text-sm text-purple-300 mb-1">Price Entries</div>
-                    <div className="text-lg text-white font-medium">{slotPrices.length}</div>
-                  </div>
+              </div>
+              <div className="bg-orange-500/10 p-4 rounded border border-orange-500/30">
+                <div className="text-center">
+                  <div className="text-sm text-orange-400 mb-1">Price Entries</div>
+                  <div className="text-lg text-white font-medium">{slotPrices.length}</div>
                 </div>
               </div>
             </div>

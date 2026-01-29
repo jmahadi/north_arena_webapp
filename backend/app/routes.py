@@ -11,7 +11,7 @@ from passlib.context import CryptContext
 from datetime import datetime , timedelta  ,timezone , date
 from dateutil.relativedelta import relativedelta
 from .database import get_db
-from .models import User , Booking , Transaction, SlotPrice, PaymentMethod , TransactionStatus , TransactionType , TransactionSummary, DayOfWeek
+from .models import User , Booking , Transaction, SlotPrice, PaymentMethod , TransactionStatus , TransactionType , TransactionSummary, DayOfWeek, BookingType
 from .auth import create_access_token, get_current_user
 from sqlalchemy.exc import SQLAlchemyError
 from pydantic import ValidationError
@@ -24,6 +24,157 @@ templates = Jinja2Templates(directory="app/templates")
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 logger = logging.getLogger(__name__)
+
+
+'''
+--------------------
+ACADEMY BOOKING HELPER FUNCTIONS
+--------------------
+'''
+
+async def calculate_academy_price(db: AsyncSession, time_slot: str, start_date: date, end_date: date, days_of_week: str = None) -> float:
+    """
+    Calculate the total price for an academy booking
+    Price = (rate per day × number of matching days in period)
+
+    Args:
+        days_of_week: Comma-separated days (e.g., "MONDAY,FRIDAY") or None for all days
+    """
+    from calendar import monthrange
+    from datetime import timedelta
+
+    # Parse selected days of week if provided
+    selected_days = None
+    if days_of_week:
+        selected_days = [day.strip().upper() for day in days_of_week.split(',')]
+
+    # Count only days that match the selected days of week
+    current_date = start_date
+    matching_days = 0
+
+    while current_date <= end_date:
+        day_name = current_date.strftime('%A').upper()
+
+        # If no specific days selected, count all days
+        # Otherwise, only count if this day matches the selection
+        if not selected_days or day_name in selected_days:
+            matching_days += 1
+
+        current_date += timedelta(days=1)
+
+    if matching_days == 0:
+        raise HTTPException(status_code=400, detail="No matching days found in the selected period")
+
+    # Get a sample day to fetch pricing
+    sample_date = start_date
+    if selected_days:
+        # Find the first date that matches our selection
+        while sample_date <= end_date:
+            if sample_date.strftime('%A').upper() in selected_days:
+                break
+            sample_date += timedelta(days=1)
+
+    day_of_week = DayOfWeek[sample_date.strftime('%A').upper()]
+
+    # Get the academy price for this time slot and day
+    slot_price_result = await db.execute(
+        select(SlotPrice)
+        .filter(
+            SlotPrice.time_slot == time_slot,
+            SlotPrice.day_of_week == day_of_week,
+            SlotPrice.booking_type == BookingType.ACADEMY
+        )
+    )
+    academy_price = slot_price_result.scalar_one_or_none()
+
+    if not academy_price:
+        # Fallback to normal price if no academy price found
+        slot_price_result = await db.execute(
+            select(SlotPrice)
+            .filter(
+                SlotPrice.time_slot == time_slot,
+                SlotPrice.day_of_week == day_of_week,
+                or_(
+                    SlotPrice.booking_type == None,
+                    SlotPrice.booking_type == BookingType.NORMAL
+                )
+            )
+        )
+        academy_price = slot_price_result.scalar_one_or_none()
+
+    if not academy_price:
+        raise HTTPException(status_code=404, detail=f"No price found for time slot {time_slot}")
+
+    # Total price = price per day × number of matching days
+    total_price = academy_price.price * matching_days
+
+    return total_price, academy_price.price, matching_days
+
+
+async def check_academy_booking_conflicts(
+    db: AsyncSession,
+    time_slot: str,
+    start_date: date,
+    end_date: date,
+    exclude_booking_id: int = None
+) -> bool:
+    """
+    Check if there are any conflicting bookings for this academy slot.
+    Returns True if there's a conflict, False otherwise.
+    """
+    # Check for normal bookings in the date range
+    normal_query = select(Booking).filter(
+        Booking.time_slot == time_slot,
+        Booking.booking_type == BookingType.NORMAL,
+        Booking.booking_date >= start_date,
+        Booking.booking_date <= end_date
+    )
+
+    if exclude_booking_id:
+        normal_query = normal_query.filter(Booking.id != exclude_booking_id)
+
+    result = await db.execute(normal_query)
+    normal_conflicts = result.scalars().all()
+
+    if normal_conflicts:
+        return True, normal_conflicts
+
+    # Check for academy bookings that might overlap
+    academy_query = select(Booking).filter(
+        Booking.time_slot == time_slot,
+        Booking.booking_type == BookingType.ACADEMY,
+        Booking.academy_start_date <= end_date,
+        Booking.academy_end_date >= start_date
+    )
+
+    if exclude_booking_id:
+        academy_query = academy_query.filter(Booking.id != exclude_booking_id)
+
+    result = await db.execute(academy_query)
+    academy_bookings = result.scalars().all()
+
+    # For each academy booking, check if any dates in the range match its selected days
+    conflicting_academy_bookings = []
+    for academy_booking in academy_bookings:
+        # Parse the selected days of week
+        if academy_booking.academy_days_of_week:
+            selected_days = [day.strip().upper() for day in academy_booking.academy_days_of_week.split(',')]
+        else:
+            selected_days = None
+
+        # Check each date in the range
+        current_date = max(start_date, academy_booking.academy_start_date)
+        end_check = min(end_date, academy_booking.academy_end_date)
+
+        while current_date <= end_check:
+            day_name = current_date.strftime('%A').upper()
+            # If no days specified or this day matches the selected days, it's a conflict
+            if not selected_days or day_name in selected_days:
+                conflicting_academy_bookings.append(academy_booking)
+                break
+            current_date += timedelta(days=1)
+
+    return len(conflicting_academy_bookings) > 0, conflicting_academy_bookings
 
 
 '''
@@ -170,30 +321,41 @@ async def dashboard(current_user: User = Depends(get_current_user), db: AsyncSes
         )
         payment_data = [{"method": row[0].value, "amount": float(row[1])} for row in payment_breakdown]
 
-        # Daily revenue for last 7 days (for chart)
-        daily_revenue = []
-        for i in range(7):
-            day = today - timedelta(days=6-i)
-            day_start = datetime.combine(day, datetime.min.time())
-            day_end = datetime.combine(day, datetime.max.time())
-            
-            revenue = await db.execute(
-                select(func.sum(Transaction.amount))
-                .filter(Transaction.created_at >= day_start, Transaction.created_at <= day_end)
+        # Daily revenue for last 30 days (OPTIMIZED: single query with GROUP BY)
+        daily_revenue_result = await db.execute(
+            select(
+                func.date(Transaction.created_at).label('date'),
+                func.sum(Transaction.amount).label('revenue')
             )
-            revenue = revenue.scalar_one() or 0
-            daily_revenue.append({"date": day.isoformat(), "revenue": float(revenue)})
+            .filter(Transaction.created_at >= thirty_days_ago)
+            .group_by(func.date(Transaction.created_at))
+        )
+        daily_revenue_map = {str(row[0]): float(row[1]) for row in daily_revenue_result}
 
-        # Daily bookings for last 7 days (for chart)
-        daily_bookings = []
-        for i in range(7):
-            day = today - timedelta(days=6-i)
-            
-            booking_count = await db.execute(
-                select(func.count(Booking.id)).filter(Booking.booking_date == day)
+        # Build the daily revenue list with all 30 days (fill gaps with 0)
+        daily_revenue = []
+        for i in range(30):
+            day = today - timedelta(days=29-i)
+            day_str = day.isoformat()
+            daily_revenue.append({"date": day_str, "revenue": daily_revenue_map.get(day_str, 0)})
+
+        # Daily bookings for last 30 days (OPTIMIZED: single query with GROUP BY)
+        daily_bookings_result = await db.execute(
+            select(
+                Booking.booking_date,
+                func.count(Booking.id).label('count')
             )
-            booking_count = booking_count.scalar_one()
-            daily_bookings.append({"date": day.isoformat(), "bookings": booking_count})
+            .filter(Booking.booking_date >= thirty_days_ago)
+            .group_by(Booking.booking_date)
+        )
+        daily_bookings_map = {str(row[0]): row[1] for row in daily_bookings_result}
+
+        # Build the daily bookings list with all 30 days (fill gaps with 0)
+        daily_bookings = []
+        for i in range(30):
+            day = today - timedelta(days=29-i)
+            day_str = day.isoformat()
+            daily_bookings.append({"date": day_str, "bookings": daily_bookings_map.get(day_str, 0)})
 
         # Recent bookings (last 5)
         recent_bookings = await db.execute(
@@ -270,14 +432,19 @@ BOOKING ROUTE
 
 @router.post("/api/add_booking", response_class=JSONResponse)
 async def book(
-    request: Request, 
-    name: str = Form(...), 
-    phone: str = Form(...), 
-    booking_date: str = Form(...), 
+    request: Request,
+    name: str = Form(...),
+    phone: str = Form(...),
+    booking_date: str = Form(...),
     time_slot: str = Form(...),
-    start_date: str = Form(None),  # Added parameter for date range
-    end_date: str = Form(None),    # Added parameter for date range
-    current_user: User = Depends(get_current_user), 
+    booking_type: str = Form("NORMAL"),  # NORMAL or ACADEMY
+    academy_start_date: str = Form(None),  # For academy bookings
+    academy_end_date: str = Form(None),    # For academy bookings
+    academy_days_of_week: str = Form(None),  # Comma-separated days (e.g., "MONDAY,FRIDAY")
+    academy_notes: str = Form(None),       # Optional notes for academy
+    start_date: str = Form(None),  # For date range display
+    end_date: str = Form(None),    # For date range display
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     try:
@@ -286,26 +453,202 @@ async def book(
         raise HTTPException(status_code=422, detail="Invalid date format. Use YYYY-MM-DD.")
 
     try:
-        existing_booking_result = await db.execute(select(Booking).filter(Booking.booking_date == booking_date_parsed, Booking.time_slot == time_slot))
-        existing_booking = existing_booking_result.scalar_one_or_none()
-        
-        if existing_booking:
+        # Parse booking type
+        try:
+            booking_type_enum = BookingType[booking_type]
+        except KeyError:
             return JSONResponse(content={
                 "success": False,
-                "message": "This slot is already booked"
-            })
-        else:
+                "message": f"Invalid booking type: {booking_type}"
+            }, status_code=400)
+
+        # Handle Academy booking
+        if booking_type_enum == BookingType.ACADEMY:
+            if not academy_start_date or not academy_end_date:
+                return JSONResponse(content={
+                    "success": False,
+                    "message": "Academy bookings require start and end dates"
+                }, status_code=400)
+
+            try:
+                academy_start = datetime.strptime(academy_start_date, "%Y-%m-%d").date()
+                academy_end = datetime.strptime(academy_end_date, "%Y-%m-%d").date()
+            except ValueError:
+                return JSONResponse(content={
+                    "success": False,
+                    "message": "Invalid academy date format. Use YYYY-MM-DD."
+                }, status_code=400)
+
+            # Check for conflicts
+            has_conflict, conflicts = await check_academy_booking_conflicts(
+                db, time_slot, academy_start, academy_end
+            )
+
+            if has_conflict:
+                conflict_details = [
+                    f"{c.name} ({c.booking_date if c.booking_type == BookingType.NORMAL else f'{c.academy_start_date} to {c.academy_end_date}'})"
+                    for c in conflicts
+                ]
+                return JSONResponse(content={
+                    "success": False,
+                    "message": f"Conflict with existing bookings: {', '.join(conflict_details[:3])}"
+                }, status_code=409)
+
+            # Calculate price and days
+            total_price, price_per_day, days_count = await calculate_academy_price(
+                db, time_slot, academy_start, academy_end, academy_days_of_week
+            )
+
+            # Create academy booking
             booking = Booking(
                 booked_by=current_user.id,
                 name=name,
                 phone=phone,
-                booking_date=booking_date_parsed,
+                booking_date=academy_start,  # Store the start date as booking_date
                 time_slot=time_slot,
+                booking_type=BookingType.ACADEMY,
+                academy_start_date=academy_start,
+                academy_end_date=academy_end,
+                academy_month_days=days_count,
+                academy_days_of_week=academy_days_of_week,  # Store selected days of week
+                academy_notes=academy_notes,
                 last_modified_by=current_user.id
             )
             db.add(booking)
+            await db.flush()  # Get the booking ID
+
+            # Create transaction summary for academy booking
+            summary = TransactionSummary(
+                booking_id=booking.id,
+                total_price=total_price,
+                total_paid=0,
+                leftover=total_price,
+                status=TransactionStatus.PENDING
+            )
+            db.add(summary)
             await db.commit()
-            message = "Slot has been successfully booked"
+
+            message = f"Academy slot booked successfully for {days_count} days (₹{total_price:.2f})"
+
+        # Handle Normal booking (including bulk normal bookings)
+        else:
+            # Check if this is a bulk booking (has start and end dates)
+            if academy_start_date and academy_end_date:
+                # Bulk normal booking - create multiple bookings
+                try:
+                    bulk_start = datetime.strptime(academy_start_date, "%Y-%m-%d").date()
+                    bulk_end = datetime.strptime(academy_end_date, "%Y-%m-%d").date()
+                except ValueError:
+                    return JSONResponse(content={
+                        "success": False,
+                        "message": "Invalid date format. Use YYYY-MM-DD."
+                    }, status_code=400)
+
+                # Parse selected days of week
+                selected_days = None
+                if academy_days_of_week:
+                    selected_days = [day.strip().upper() for day in academy_days_of_week.split(',')]
+
+                # Collect dates that match the criteria
+                dates_to_book = []
+                current_date = bulk_start
+                while current_date <= bulk_end:
+                    day_name = current_date.strftime('%A').upper()
+                    # Only include dates that match the selected days of week
+                    if not selected_days or day_name in selected_days:
+                        dates_to_book.append(current_date)
+                    current_date += timedelta(days=1)
+
+                if not dates_to_book:
+                    return JSONResponse(content={
+                        "success": False,
+                        "message": "No matching days found in the selected period"
+                    }, status_code=400)
+
+                # Check for conflicts on all dates
+                conflicts = []
+                for date_to_check in dates_to_book:
+                    # Check if slot is already booked on this date
+                    existing_booking_result = await db.execute(
+                        select(Booking).filter(
+                            Booking.booking_date == date_to_check,
+                            Booking.time_slot == time_slot
+                        )
+                    )
+                    existing_booking = existing_booking_result.scalar_one_or_none()
+                    if existing_booking:
+                        conflicts.append(f"{date_to_check.isoformat()}")
+
+                    # Check if there's an academy booking covering this slot
+                    has_conflict, academy_conflicts = await check_academy_booking_conflicts(
+                        db, time_slot, date_to_check, date_to_check
+                    )
+                    if has_conflict:
+                        conflicts.append(f"{date_to_check.isoformat()} (academy)")
+
+                if conflicts:
+                    return JSONResponse(content={
+                        "success": False,
+                        "message": f"Conflict on dates: {', '.join(conflicts[:5])}"
+                    }, status_code=409)
+
+                # Create bookings for all dates
+                for date_to_book in dates_to_book:
+                    booking = Booking(
+                        booked_by=current_user.id,
+                        name=name,
+                        phone=phone,
+                        booking_date=date_to_book,
+                        time_slot=time_slot,
+                        booking_type=BookingType.NORMAL,
+                        last_modified_by=current_user.id
+                    )
+                    db.add(booking)
+
+                await db.commit()
+                message = f"Successfully booked {len(dates_to_book)} slots"
+
+            else:
+                # Single normal booking
+                # Check if slot is already booked
+                existing_booking_result = await db.execute(
+                    select(Booking).filter(
+                        Booking.booking_date == booking_date_parsed,
+                        Booking.time_slot == time_slot
+                    )
+                )
+                existing_booking = existing_booking_result.scalar_one_or_none()
+
+                if existing_booking:
+                    return JSONResponse(content={
+                        "success": False,
+                        "message": "This slot is already booked"
+                    })
+
+                # Check if there's an academy booking covering this slot
+                has_conflict, conflicts = await check_academy_booking_conflicts(
+                    db, time_slot, booking_date_parsed, booking_date_parsed
+                )
+
+                if has_conflict:
+                    return JSONResponse(content={
+                        "success": False,
+                        "message": "This slot is blocked by an academy booking"
+                    }, status_code=409)
+
+                # Create normal booking
+                booking = Booking(
+                    booked_by=current_user.id,
+                    name=name,
+                    phone=phone,
+                    booking_date=booking_date_parsed,
+                    time_slot=time_slot,
+                    booking_type=BookingType.NORMAL,
+                    last_modified_by=current_user.id
+                )
+                db.add(booking)
+                await db.commit()
+                message = "Slot has been successfully booked"
 
         # Determine date range for returning bookings
         fetch_start_date = None
@@ -331,27 +674,72 @@ async def book(
         fetch_end_date = min(fetch_end_date, max_end_date)
 
 
-        # Fetch updated bookings for the entire date range
+        # Fetch updated bookings for the entire date range (including academy bookings that overlap)
         bookings_result = await db.execute(
             select(Booking)
             .options(joinedload(Booking.user))
-            .filter(Booking.booking_date.between(fetch_start_date, fetch_end_date))
+            .filter(
+                or_(
+                    # Normal bookings within the date range
+                    and_(
+                        Booking.booking_type == BookingType.NORMAL,
+                        Booking.booking_date.between(fetch_start_date, fetch_end_date)
+                    ),
+                    # Academy bookings that overlap with the date range
+                    and_(
+                        Booking.booking_type == BookingType.ACADEMY,
+                        Booking.academy_start_date <= fetch_end_date,
+                        Booking.academy_end_date >= fetch_start_date
+                    )
+                )
+            )
             .order_by(Booking.booking_date, Booking.time_slot)
         )
         bookings = bookings_result.scalars().all()
 
         # Create bookingsData dictionary
-        bookings_data = {
-            f"{b.booking_date.isoformat()}_{b.time_slot}": {
-                "id": b.id,
-                "name": b.name,
-                "phone": b.phone,
-                "booking_date": b.booking_date.isoformat(),
-                "time_slot": b.time_slot,
-                "booked_by": b.user.username
-            }
-            for b in bookings
-        }
+        bookings_data = {}
+        for b in bookings:
+            # For academy bookings, create entries for all dates in the range
+            if b.booking_type == BookingType.ACADEMY:
+                # Parse selected days of week if available
+                selected_days = None
+                if b.academy_days_of_week:
+                    selected_days = [day.strip().upper() for day in b.academy_days_of_week.split(',')]
+
+                current_date = b.academy_start_date
+                while current_date <= b.academy_end_date:
+                    day_name = current_date.strftime('%A').upper()
+
+                    # Only include dates that match the selected days of week
+                    if not selected_days or day_name in selected_days:
+                        key = f"{current_date.isoformat()}_{b.time_slot}"
+                        bookings_data[key] = {
+                            "id": b.id,
+                            "name": b.name,
+                            "phone": b.phone,
+                            "booking_date": current_date.isoformat(),
+                            "time_slot": b.time_slot,
+                            "booking_type": b.booking_type.value,
+                            "academy_start_date": b.academy_start_date.isoformat(),
+                            "academy_end_date": b.academy_end_date.isoformat(),
+                            "academy_days_of_week": b.academy_days_of_week,
+                            "academy_notes": b.academy_notes,
+                            "booked_by": b.user.username
+                    }
+                    current_date += timedelta(days=1)
+            else:
+                # Normal booking
+                key = f"{b.booking_date.isoformat()}_{b.time_slot}"
+                bookings_data[key] = {
+                    "id": b.id,
+                    "name": b.name,
+                    "phone": b.phone,
+                    "booking_date": b.booking_date.isoformat(),
+                    "time_slot": b.time_slot,
+                    "booking_type": b.booking_type.value,
+                    "booked_by": b.user.username
+                }
 
         return JSONResponse(content={
             "success": True,
@@ -372,53 +760,150 @@ UPDATE BOOKING ROUTE
 
 @router.post("/api/update_booking", response_class=JSONResponse)
 async def update_booking(
-    request: Request, 
-    booking_id: int = Form(...), 
-    name: str = Form(...), 
-    phone: str = Form(...), 
-    booking_date: str = Form(...), 
+    request: Request,
+    booking_id: int = Form(...),
+    name: str = Form(...),
+    phone: str = Form(...),
+    booking_date: str = Form(...),
     time_slot: str = Form(...),
-    start_date: str = Form(None),  # Add this parameter
-    end_date: str = Form(None),    # Add this parameter
-    current_user: User = Depends(get_current_user), 
+    booking_type: str = Form("NORMAL"),  # NORMAL or ACADEMY
+    academy_start_date: str = Form(None),  # For academy bookings
+    academy_end_date: str = Form(None),    # For academy bookings
+    academy_days_of_week: str = Form(None),  # Comma-separated days
+    academy_notes: str = Form(None),       # Optional notes
+    start_date: str = Form(None),  # For date range display
+    end_date: str = Form(None),    # For date range display
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     try:
         booking_result = await db.execute(select(Booking).filter(Booking.id == booking_id))
         booking = booking_result.scalar_one_or_none()
-        
+
         if not booking:
             raise HTTPException(status_code=404, detail="Booking not found")
 
         try:
-            new_booking_date = datetime.strptime(booking_date, "%Y-%m-%d").date()
-        except ValueError:
-            raise HTTPException(status_code=422, detail="Invalid date format. Use YYYY-MM-DD.")
+            booking_type_enum = BookingType[booking_type]
+        except KeyError:
+            return JSONResponse(content={
+                "success": False,
+                "message": f"Invalid booking type: {booking_type}"
+            }, status_code=400)
 
-        # Store the old booking date and time slot for reference
+        # Store the old booking info for reference
         old_booking_date = booking.booking_date
         old_time_slot = booking.time_slot
+        old_booking_type = booking.booking_type
 
-        # Check if the new slot is already booked
-        existing_booking_result = await db.execute(
-            select(Booking).filter(
-                Booking.booking_date == new_booking_date,
-                Booking.time_slot == time_slot,
-                Booking.id != booking_id  # Exclude the current booking
+        # Handle Academy booking update
+        if booking_type_enum == BookingType.ACADEMY:
+            if not academy_start_date or not academy_end_date:
+                return JSONResponse(content={
+                    "success": False,
+                    "message": "Academy bookings require start and end dates"
+                }, status_code=400)
+
+            try:
+                academy_start = datetime.strptime(academy_start_date, "%Y-%m-%d").date()
+                academy_end = datetime.strptime(academy_end_date, "%Y-%m-%d").date()
+            except ValueError:
+                return JSONResponse(content={
+                    "success": False,
+                    "message": "Invalid academy date format. Use YYYY-MM-DD."
+                }, status_code=400)
+
+            # Check for conflicts (excluding this booking)
+            has_conflict, conflicts = await check_academy_booking_conflicts(
+                db, time_slot, academy_start, academy_end, exclude_booking_id=booking_id
             )
-        )
-        existing_booking = existing_booking_result.scalar_one_or_none()
-        
-        if existing_booking:
-            raise HTTPException(status_code=409, detail="This slot is already booked. Please choose another.")
 
-        booking.name = name
-        booking.phone = phone
-        booking.booking_date = new_booking_date
-        booking.time_slot = time_slot
-        booking.last_modified_by = current_user.id
-        booking.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
-        
+            if has_conflict:
+                conflict_details = [
+                    f"{c.name} ({c.booking_date if c.booking_type == BookingType.NORMAL else f'{c.academy_start_date} to {c.academy_end_date}'})"
+                    for c in conflicts
+                ]
+                return JSONResponse(content={
+                    "success": False,
+                    "message": f"Conflict with existing bookings: {', '.join(conflict_details[:3])}"
+                }, status_code=409)
+
+            # Calculate price and days
+            total_price, price_per_day, days_count = await calculate_academy_price(
+                db, time_slot, academy_start, academy_end, academy_days_of_week
+            )
+
+            # Update academy booking fields
+            booking.name = name
+            booking.phone = phone
+            booking.booking_date = academy_start
+            booking.time_slot = time_slot
+            booking.booking_type = BookingType.ACADEMY
+            booking.academy_start_date = academy_start
+            booking.academy_end_date = academy_end
+            booking.academy_month_days = days_count
+            booking.academy_days_of_week = academy_days_of_week
+            booking.academy_notes = academy_notes
+            booking.last_modified_by = current_user.id
+            booking.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
+
+            # Update transaction summary if it exists
+            transaction_summary_result = await db.execute(
+                select(TransactionSummary).filter(TransactionSummary.booking_id == booking_id)
+            )
+            transaction_summary = transaction_summary_result.scalar_one_or_none()
+
+            if transaction_summary:
+                transaction_summary.total_price = total_price
+                transaction_summary.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
+
+        else:
+            # Handle Normal booking update
+            try:
+                new_booking_date = datetime.strptime(booking_date, "%Y-%m-%d").date()
+            except ValueError:
+                raise HTTPException(status_code=422, detail="Invalid date format. Use YYYY-MM-DD.")
+
+            # Check if the new slot is already booked
+            existing_booking_result = await db.execute(
+                select(Booking).filter(
+                    Booking.booking_date == new_booking_date,
+                    Booking.time_slot == time_slot,
+                    Booking.id != booking_id
+                )
+            )
+            existing_booking = existing_booking_result.scalar_one_or_none()
+
+            if existing_booking:
+                return JSONResponse(content={
+                    "success": False,
+                    "message": "This slot is already booked. Please choose another."
+                }, status_code=409)
+
+            # Check for academy booking conflicts
+            has_conflict, conflicts = await check_academy_booking_conflicts(
+                db, time_slot, new_booking_date, new_booking_date, exclude_booking_id=booking_id
+            )
+
+            if has_conflict:
+                return JSONResponse(content={
+                    "success": False,
+                    "message": "This slot is blocked by an academy booking"
+                }, status_code=409)
+
+            booking.name = name
+            booking.phone = phone
+            booking.booking_date = new_booking_date
+            booking.time_slot = time_slot
+            booking.booking_type = BookingType.NORMAL
+            booking.academy_start_date = None
+            booking.academy_end_date = None
+            booking.academy_month_days = None
+            booking.academy_days_of_week = None
+            booking.academy_notes = None
+            booking.last_modified_by = current_user.id
+            booking.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
+
         await db.commit()
 
         # Use the provided date range if available
@@ -443,28 +928,73 @@ async def update_booking(
         # Ensure the range doesn't exceed 3 months
         max_end_date = fetch_start_date + relativedelta(months=3)
         fetch_end_date = min(fetch_end_date, max_end_date)
-    
-        # Fetch bookings for the determined date range
+
+        # Fetch bookings for the determined date range (both normal and academy bookings)
         bookings_result = await db.execute(
             select(Booking)
             .options(joinedload(Booking.user))
-            .filter(Booking.booking_date.between(fetch_start_date, fetch_end_date))
+            .filter(
+                or_(
+                    # Normal bookings within the date range
+                    and_(
+                        Booking.booking_type == BookingType.NORMAL,
+                        Booking.booking_date.between(fetch_start_date, fetch_end_date)
+                    ),
+                    # Academy bookings that overlap with the date range
+                    and_(
+                        Booking.booking_type == BookingType.ACADEMY,
+                        Booking.academy_start_date <= fetch_end_date,
+                        Booking.academy_end_date >= fetch_start_date
+                    )
+                )
+            )
             .order_by(Booking.booking_date, Booking.time_slot)
         )
         bookings = bookings_result.scalars().all()
 
         # Create bookingsData dictionary
-        bookings_data = {
-            f"{b.booking_date.isoformat()}_{b.time_slot}": {
-                "id": b.id,
-                "name": b.name,
-                "phone": b.phone,
-                "booking_date": b.booking_date.isoformat(),
-                "time_slot": b.time_slot,
-                "booked_by": b.user.username
-            }
-            for b in bookings
-        }
+        bookings_data = {}
+        for b in bookings:
+            # For academy bookings, create entries for all dates in the range
+            if b.booking_type == BookingType.ACADEMY:
+                # Parse selected days of week if available
+                selected_days = None
+                if b.academy_days_of_week:
+                    selected_days = [day.strip().upper() for day in b.academy_days_of_week.split(',')]
+
+                current_date = b.academy_start_date
+                while current_date <= b.academy_end_date:
+                    day_name = current_date.strftime('%A').upper()
+
+                    # Only include dates that match the selected days of week
+                    if not selected_days or day_name in selected_days:
+                        key = f"{current_date.isoformat()}_{b.time_slot}"
+                        bookings_data[key] = {
+                            "id": b.id,
+                            "name": b.name,
+                            "phone": b.phone,
+                            "booking_date": current_date.isoformat(),
+                            "time_slot": b.time_slot,
+                            "booking_type": b.booking_type.value,
+                            "academy_start_date": b.academy_start_date.isoformat(),
+                            "academy_end_date": b.academy_end_date.isoformat(),
+                            "academy_days_of_week": b.academy_days_of_week,
+                            "academy_notes": b.academy_notes,
+                            "booked_by": b.user.username
+                    }
+                    current_date += timedelta(days=1)
+            else:
+                # Normal booking
+                key = f"{b.booking_date.isoformat()}_{b.time_slot}"
+                bookings_data[key] = {
+                    "id": b.id,
+                    "name": b.name,
+                    "phone": b.phone,
+                    "booking_date": b.booking_date.isoformat(),
+                    "time_slot": b.time_slot,
+                    "booking_type": b.booking_type.value,
+                    "booked_by": b.user.username
+                }
 
         return JSONResponse(content={
             "success": True,
@@ -494,24 +1024,58 @@ async def delete_booking(
     booking_id: int,
     start_date: str = Query(None),
     end_date: str = Query(None),
+    retain_payments: bool = Query(True),  # New parameter to control soft vs hard delete
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     try:
         booking_result = await db.execute(select(Booking).filter(Booking.id == booking_id))
         booking = booking_result.scalar_one_or_none()
-        
+
         if not booking:
             return JSONResponse(content={
                 "success": False,
                 "message": "Booking not found"
             }, status_code=404)
-        
-        # Store booking date before deletion for fetching updated bookings
+
+        # Store booking info before deletion for fetching updated bookings
         booking_date = booking.booking_date
-        
-        await db.delete(booking)
-        await db.commit()
+        booking_type = booking.booking_type
+        academy_start_date = booking.academy_start_date if booking_type == BookingType.ACADEMY else None
+        academy_end_date = booking.academy_end_date if booking_type == BookingType.ACADEMY else None
+
+        # Check if booking has transactions
+        transactions_result = await db.execute(
+            select(Transaction).filter(Transaction.booking_id == booking_id)
+        )
+        transactions = transactions_result.scalars().all()
+        has_transactions = len(transactions) > 0
+
+        if has_transactions and retain_payments:
+            # Soft delete: Mark booking as cancelled but retain transactions
+            booking.is_cancelled = True
+            booking.cancelled_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            booking.last_modified_by = current_user.id
+            await db.commit()
+            message = "Booking cancelled. Payment records retained for accounting."
+        else:
+            # Hard delete: Remove everything
+            # Delete related transaction summary first (if exists)
+            transaction_summary_result = await db.execute(
+                select(TransactionSummary).filter(TransactionSummary.booking_id == booking_id)
+            )
+            transaction_summary = transaction_summary_result.scalar_one_or_none()
+            if transaction_summary:
+                await db.delete(transaction_summary)
+
+            # Delete related transactions
+            for transaction in transactions:
+                await db.delete(transaction)
+
+            # Delete the booking
+            await db.delete(booking)
+            await db.commit()
+            message = "Booking deleted successfully"
 
         # Handle date range for fetching updated bookings
         fetch_start_date = None
@@ -536,32 +1100,82 @@ async def delete_booking(
         max_end_date = fetch_start_date + relativedelta(months=3)
         fetch_end_date = min(fetch_end_date, max_end_date)
 
-        # Fetch bookings for the selected date range
+        # Fetch bookings for the selected date range (both normal and academy bookings)
+        # IMPORTANT: Filter out cancelled bookings
         bookings_result = await db.execute(
             select(Booking)
             .options(joinedload(Booking.user))
-            .filter(Booking.booking_date.between(fetch_start_date, fetch_end_date))
+            .filter(
+                Booking.is_cancelled == False,  # Exclude cancelled bookings
+                or_(
+                    # Normal bookings within the date range
+                    and_(
+                        Booking.booking_type == BookingType.NORMAL,
+                        Booking.booking_date.between(fetch_start_date, fetch_end_date)
+                    ),
+                    # Academy bookings that overlap with the date range
+                    and_(
+                        Booking.booking_type == BookingType.ACADEMY,
+                        Booking.academy_start_date <= fetch_end_date,
+                        Booking.academy_end_date >= fetch_start_date
+                    )
+                )
+            )
             .order_by(Booking.booking_date, Booking.time_slot)
         )
         bookings = bookings_result.scalars().all()
 
         # Create updated bookingsData dictionary
-        bookings_data = {
-            f"{b.booking_date.isoformat()}_{b.time_slot}": {
-                "id": b.id,
-                "name": b.name,
-                "phone": b.phone,
-                "booking_date": b.booking_date.isoformat(),
-                "time_slot": b.time_slot,
-                "booked_by": b.user.username
-            }
-            for b in bookings
-        }
+        bookings_data = {}
+        for b in bookings:
+            # For academy bookings, create entries for all dates in the range
+            if b.booking_type == BookingType.ACADEMY:
+                # Parse selected days of week if available
+                selected_days = None
+                if b.academy_days_of_week:
+                    selected_days = [day.strip().upper() for day in b.academy_days_of_week.split(',')]
+
+                current_date = b.academy_start_date
+                while current_date <= b.academy_end_date:
+                    # Only show dates within the requested range
+                    if fetch_start_date <= current_date <= fetch_end_date:
+                        day_name = current_date.strftime('%A').upper()
+
+                        # Only include dates that match the selected days of week
+                        if not selected_days or day_name in selected_days:
+                            key = f"{current_date.isoformat()}_{b.time_slot}"
+                            bookings_data[key] = {
+                                "id": b.id,
+                                "name": b.name,
+                                "phone": b.phone,
+                                "booking_date": current_date.isoformat(),
+                                "time_slot": b.time_slot,
+                                "booking_type": b.booking_type.value,
+                                "academy_start_date": b.academy_start_date.isoformat(),
+                                "academy_end_date": b.academy_end_date.isoformat(),
+                                "academy_days_of_week": b.academy_days_of_week,
+                                "academy_notes": b.academy_notes,
+                                "booked_by": b.user.username
+                            }
+                    current_date += timedelta(days=1)
+            else:
+                # Normal booking
+                key = f"{b.booking_date.isoformat()}_{b.time_slot}"
+                bookings_data[key] = {
+                    "id": b.id,
+                    "name": b.name,
+                    "phone": b.phone,
+                    "booking_date": b.booking_date.isoformat(),
+                    "time_slot": b.time_slot,
+                    "booking_type": b.booking_type.value,
+                    "booked_by": b.user.username
+                }
 
         return JSONResponse(content={
             "success": True,
-            "message": "Booking deleted successfully",
-            "bookingsData": bookings_data
+            "message": message,
+            "bookingsData": bookings_data,
+            "was_soft_deleted": has_transactions and retain_payments
         })
     except Exception as e:
         print(f"Error in delete_booking: {str(e)}")
@@ -587,42 +1201,92 @@ async def bookings(
 ):
     if not current_user:
         return JSONResponse(status_code=401, content={"detail": "Not authenticated"})
-    
+
     today = datetime.now().date()
-    
+
     if start_date:
         start_date = datetime.strptime(start_date, "%Y-%m-%d").date()
     else:
         start_date = today
-    
+
     if end_date:
         end_date = datetime.strptime(end_date, "%Y-%m-%d").date()
     else:
         end_date = start_date + timedelta(days=6)
-    
+
     # Ensure the range doesn't exceed 3 months
     max_end_date = start_date + relativedelta(months=3)
     end_date = min(end_date, max_end_date)
-    
+
+    # Query for both normal bookings and academy bookings that overlap with the date range
+    # Exclude cancelled bookings from the matrix view
     bookings_result = await db.execute(
         select(Booking)
         .options(joinedload(Booking.user))
-        .filter(Booking.booking_date.between(start_date, end_date))
+        .filter(
+            or_(Booking.is_cancelled == False, Booking.is_cancelled == None),  # Exclude cancelled bookings
+            or_(
+                # Normal bookings within the date range
+                and_(
+                    Booking.booking_type == BookingType.NORMAL,
+                    Booking.booking_date.between(start_date, end_date)
+                ),
+                # Academy bookings that overlap with the date range
+                and_(
+                    Booking.booking_type == BookingType.ACADEMY,
+                    Booking.academy_start_date <= end_date,
+                    Booking.academy_end_date >= start_date
+                )
+            )
+        )
         .order_by(Booking.booking_date, Booking.time_slot)
     )
     bookings = bookings_result.scalars().all()
 
     bookings_data = {}
-    for booking in bookings:
-        key = f"{booking.booking_date.isoformat()}_{booking.time_slot}"
-        bookings_data[key] = {
-            "id": booking.id,
-            "name": booking.name,
-            "phone": booking.phone,
-            "booking_date": booking.booking_date.isoformat(),
-            "time_slot": booking.time_slot,
-            "booked_by": booking.user.username
-        }
+    for b in bookings:
+        # For academy bookings, create entries for all dates in the range
+        if b.booking_type == BookingType.ACADEMY:
+            # Parse selected days of week if available
+            selected_days = None
+            if b.academy_days_of_week:
+                selected_days = [day.strip().upper() for day in b.academy_days_of_week.split(',')]
+
+            current_date = b.academy_start_date
+            while current_date <= b.academy_end_date:
+                # Only show dates within the requested range
+                if start_date <= current_date <= end_date:
+                    day_name = current_date.strftime('%A').upper()
+
+                    # Only include dates that match the selected days of week
+                    if not selected_days or day_name in selected_days:
+                        key = f"{current_date.isoformat()}_{b.time_slot}"
+                        bookings_data[key] = {
+                            "id": b.id,
+                            "name": b.name,
+                            "phone": b.phone,
+                            "booking_date": current_date.isoformat(),
+                            "time_slot": b.time_slot,
+                            "booking_type": b.booking_type.value,
+                            "academy_start_date": b.academy_start_date.isoformat(),
+                            "academy_end_date": b.academy_end_date.isoformat(),
+                            "academy_days_of_week": b.academy_days_of_week,
+                            "academy_notes": b.academy_notes,
+                            "booked_by": b.user.username
+                        }
+                current_date += timedelta(days=1)
+        else:
+            # Normal booking
+            key = f"{b.booking_date.isoformat()}_{b.time_slot}"
+            bookings_data[key] = {
+                "id": b.id,
+                "name": b.name,
+                "phone": b.phone,
+                "booking_date": b.booking_date.isoformat(),
+                "time_slot": b.time_slot,
+                "booking_type": b.booking_type.value,
+                "booked_by": b.user.username
+            }
 
     return JSONResponse(content={"bookingsData": bookings_data})
 
@@ -666,12 +1330,30 @@ async def list_slot_prices(db: AsyncSession = Depends(get_db)):
 @router.get("/available_time_slots", response_class=JSONResponse)
 async def get_available_time_slots(db: AsyncSession = Depends(get_db)):
     try:
+        # Canonical time slot order (chronological)
+        SLOT_ORDER = [
+            "9:30 AM - 11:00 AM",
+            "11:00 AM - 12:30 PM",
+            "12:30 PM - 2:00 PM",
+            "3:00 PM - 4:30 PM",
+            "4:30 PM - 6:00 PM",
+            "6:00 PM - 7:30 PM",
+            "7:30 PM - 9:00 PM",
+            "9:00 PM - 10:30 PM"
+        ]
+
         # Get all unique time slots from the slot_prices table
         result = await db.execute(
-            select(SlotPrice.time_slot).distinct().order_by(SlotPrice.time_slot)
+            select(SlotPrice.time_slot).distinct()
         )
-        time_slots = [row[0] for row in result.fetchall()]
-        
+        db_time_slots = [row[0] for row in result.fetchall()]
+
+        # Sort by canonical order, putting any unknown slots at the end
+        time_slots = sorted(
+            db_time_slots,
+            key=lambda x: SLOT_ORDER.index(x) if x in SLOT_ORDER else 999
+        )
+
         return JSONResponse(content={
             "success": True,
             "time_slots": time_slots
@@ -1247,3 +1929,251 @@ async def delete_transaction(
             status_code=500,
             content={"success": False, "message": f"Unexpected error: {str(e)}"}
         )
+
+
+'''
+--------------------
+FINANCIAL JOURNAL ROUTE
+--------------------
+'''
+
+@router.get("/api/financial-journal")
+async def get_financial_journal(
+    start_date: str = Query(...),
+    end_date: str = Query(...),
+    payment_method: str = Query(None),  # Comma-separated: "CASH,BKASH"
+    transaction_type: str = Query(None),  # Comma-separated: "BOOKING_PAYMENT,SLOT_PAYMENT"
+    booking_type: str = Query(None),  # "NORMAL" or "ACADEMY"
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get all transactions for the Financial Journal view.
+    Includes transactions from cancelled bookings for accurate financial records.
+    Returns chronological list with daily totals per payment method.
+    """
+    try:
+        # Parse date range
+        start = datetime.strptime(start_date, "%Y-%m-%d").date()
+        end = datetime.strptime(end_date, "%Y-%m-%d").date()
+
+        # Start building the query with eager loading
+        query = (
+            select(Transaction)
+            .options(
+                joinedload(Transaction.booking),
+                joinedload(Transaction.creator),
+                joinedload(Transaction.updater)
+            )
+            .filter(
+                Transaction.created_at >= datetime.combine(start, datetime.min.time()),
+                Transaction.created_at <= datetime.combine(end, datetime.max.time())
+            )
+        )
+
+        # Apply payment method filter
+        if payment_method:
+            methods = [PaymentMethod[m.strip()] for m in payment_method.split(',')]
+            query = query.filter(Transaction.payment_method.in_(methods))
+
+        # Apply transaction type filter
+        if transaction_type:
+            types = [TransactionType[t.strip()] for t in transaction_type.split(',')]
+            query = query.filter(Transaction.transaction_type.in_(types))
+
+        # Apply booking type filter (join with booking)
+        if booking_type:
+            booking_types = [BookingType[bt.strip()] for bt in booking_type.split(',')]
+            query = query.join(Transaction.booking).filter(Booking.booking_type.in_(booking_types))
+
+        # Order by created_at descending (most recent first)
+        query = query.order_by(Transaction.created_at.desc())
+
+        # Execute query
+        result = await db.execute(query)
+        transactions = result.scalars().all()
+
+        # Build response with transaction details
+        transactions_data = []
+        daily_totals = {}  # {date: {payment_method: amount}}
+
+        for t in transactions:
+            booking = t.booking
+            is_cancelled = getattr(booking, 'is_cancelled', False) if booking else False
+
+            transaction_date = t.created_at.date().isoformat()
+
+            # Track daily totals
+            if transaction_date not in daily_totals:
+                daily_totals[transaction_date] = {
+                    'CASH': 0, 'BKASH': 0, 'NAGAD': 0, 'CARD': 0, 'BANK_TRANSFER': 0
+                }
+
+            # Only count positive amounts towards totals (not discounts/adjustments)
+            if t.transaction_type in [TransactionType.BOOKING_PAYMENT, TransactionType.SLOT_PAYMENT]:
+                daily_totals[transaction_date][t.payment_method.name] += t.amount
+
+            transactions_data.append({
+                "id": t.id,
+                "created_at": t.created_at.isoformat(),
+                "booking_id": t.booking_id,
+                "customer_name": booking.name if booking else "Unknown",
+                "customer_phone": booking.phone if booking else "Unknown",
+                "booking_date": booking.booking_date.isoformat() if booking else None,
+                "time_slot": booking.time_slot if booking else None,
+                "booking_type": booking.booking_type.value if booking else None,
+                "is_cancelled": is_cancelled,
+                "transaction_type": t.transaction_type.value,
+                "payment_method": t.payment_method.value,
+                "amount": t.amount,
+                "created_by": t.creator.username if t.creator else "Unknown",
+                "updated_by": t.updater.username if t.updater else None,
+                "updated_at": t.updated_at.isoformat() if t.updated_at else None
+            })
+
+        # Calculate period totals
+        period_totals = {
+            'CASH': 0, 'BKASH': 0, 'NAGAD': 0, 'CARD': 0, 'BANK_TRANSFER': 0
+        }
+        for date_totals in daily_totals.values():
+            for method, amount in date_totals.items():
+                period_totals[method] += amount
+
+        grand_total = sum(period_totals.values())
+
+        return JSONResponse(content={
+            "success": True,
+            "transactions": transactions_data,
+            "daily_totals": daily_totals,
+            "period_totals": period_totals,
+            "grand_total": grand_total,
+            "transaction_count": len(transactions_data)
+        })
+
+    except ValueError as e:
+        return JSONResponse(status_code=400, content={
+            "success": False,
+            "message": f"Invalid parameter: {str(e)}"
+        })
+    except SQLAlchemyError as e:
+        logging.error(f"Database error in get_financial_journal: {str(e)}")
+        return JSONResponse(status_code=500, content={
+            "success": False,
+            "message": f"Database error: {str(e)}"
+        })
+    except Exception as e:
+        logging.error(f"Unexpected error in get_financial_journal: {str(e)}")
+        return JSONResponse(status_code=500, content={
+            "success": False,
+            "message": f"Unexpected error: {str(e)}"
+        })
+
+
+@router.get("/api/booking-payment-summary/{booking_id}")
+async def get_booking_payment_summary(
+    booking_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get detailed payment summary for a specific booking.
+    Used in the booking details modal for payment management.
+    """
+    try:
+        # Get booking with transaction summary
+        booking_result = await db.execute(
+            select(Booking)
+            .options(
+                joinedload(Booking.transaction_summary),
+                joinedload(Booking.user)
+            )
+            .filter(Booking.id == booking_id)
+        )
+        booking = booking_result.scalar_one_or_none()
+
+        if not booking:
+            return JSONResponse(status_code=404, content={
+                "success": False,
+                "message": "Booking not found"
+            })
+
+        # Get all transactions for this booking
+        transactions_result = await db.execute(
+            select(Transaction)
+            .options(
+                joinedload(Transaction.creator),
+                joinedload(Transaction.updater)
+            )
+            .filter(Transaction.booking_id == booking_id)
+            .order_by(Transaction.created_at.desc())
+        )
+        transactions = transactions_result.scalars().all()
+
+        # Get or calculate summary data
+        summary = booking.transaction_summary
+
+        # If no summary exists, calculate it from slot price
+        if not summary:
+            # Try to get slot price
+            slot_price_result = await db.execute(
+                select(SlotPrice)
+                .filter(
+                    SlotPrice.time_slot == booking.time_slot,
+                    SlotPrice.day_of_week == DayOfWeek[booking.booking_date.strftime('%A').upper()]
+                )
+            )
+            slot_price = slot_price_result.scalar_one_or_none()
+            total_price = slot_price.price if slot_price else 0
+            total_paid = 0
+            leftover = total_price
+            status = "PENDING"
+        else:
+            total_price = summary.total_price
+            total_paid = summary.total_paid
+            leftover = summary.leftover
+            status = summary.status.value
+
+        transactions_data = [{
+            "id": t.id,
+            "transaction_type": t.transaction_type.value,
+            "payment_method": t.payment_method.value,
+            "amount": t.amount,
+            "created_by": t.creator.username if t.creator else "Unknown",
+            "created_at": t.created_at.isoformat(),
+            "updated_by": t.updater.username if t.updater else None,
+            "updated_at": t.updated_at.isoformat() if t.updated_at else None
+        } for t in transactions]
+
+        return JSONResponse(content={
+            "success": True,
+            "booking": {
+                "id": booking.id,
+                "name": booking.name,
+                "phone": booking.phone,
+                "booking_date": booking.booking_date.isoformat(),
+                "time_slot": booking.time_slot,
+                "booking_type": booking.booking_type.value,
+                "is_cancelled": getattr(booking, 'is_cancelled', False),
+                "created_by": booking.user.username if booking.user else "Unknown"
+            },
+            "summary": {
+                "total_price": total_price,
+                "total_paid": total_paid,
+                "leftover": leftover,
+                "status": status
+            },
+            "transactions": transactions_data
+        })
+
+    except SQLAlchemyError as e:
+        logging.error(f"Database error in get_booking_payment_summary: {str(e)}")
+        return JSONResponse(status_code=500, content={
+            "success": False,
+            "message": f"Database error: {str(e)}"
+        })
+    except Exception as e:
+        logging.error(f"Unexpected error in get_booking_payment_summary: {str(e)}")
+        return JSONResponse(status_code=500, content={
+            "success": False,
+            "message": f"Unexpected error: {str(e)}"
+        })

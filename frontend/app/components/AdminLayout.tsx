@@ -64,13 +64,12 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             <Link href="/bookings" className="block py-3 px-4 rounded-md transition-colors duration-200 text-gray-300 hover:bg-orange-600/20 hover:text-white border-l-2 border-transparent hover:border-orange-500">
               Bookings
             </Link>
-            <Link href="/transactions" className="block py-3 px-4 rounded-md transition-colors duration-200 text-gray-300 hover:bg-orange-600/20 hover:text-white border-l-2 border-transparent hover:border-orange-500">
-              Transactions
+            <Link href="/financial-journal" className="block py-3 px-4 rounded-md transition-colors duration-200 text-gray-300 hover:bg-orange-600/20 hover:text-white border-l-2 border-transparent hover:border-orange-500">
+              Financial Journal
             </Link>
             <Link href="/slot-prices" className="block py-3 px-4 rounded-md transition-colors duration-200 text-gray-300 hover:bg-orange-600/20 hover:text-white border-l-2 border-transparent hover:border-orange-500">
               Slots & Prices
             </Link>
-            {/* Add more menu items as needed */}
           </nav>
           <button
             onClick={handleLogout}

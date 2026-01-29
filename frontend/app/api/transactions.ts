@@ -184,12 +184,12 @@ export const addTransaction = async (data: TransactionData): Promise<ApiResponse
     formData.append('amount', data.amount.toString());
     // Add current timestamp in the required format
     const now = new Date();
-    const formattedDate = now.toISOString().split('T')[0] + ' ' + 
+    const formattedDate = now.toISOString().split('T')[0] + ' ' +
                          now.toTimeString().split(' ')[0];
     formData.append('created_at', formattedDate);
 
     const response = await api.post<ApiResponse>('/add_transaction', formData);
-    
+
     return response.data;
   } catch (error: any) {
     if (error.response?.data?.detail) {
@@ -200,5 +200,111 @@ export const addTransaction = async (data: TransactionData): Promise<ApiResponse
       throw new Error(`Validation error: ${details}`);
     }
     throw error;
+  }
+};
+
+// Financial Journal API
+export interface FinancialJournalFilters {
+  startDate: string;
+  endDate: string;
+  paymentMethod?: string;
+  transactionType?: string;
+  bookingType?: string;
+}
+
+export interface FinancialJournalTransaction {
+  id: number;
+  created_at: string;
+  booking_id: number;
+  customer_name: string;
+  customer_phone: string;
+  booking_date: string | null;
+  time_slot: string | null;
+  booking_type: string | null;
+  is_cancelled: boolean;
+  transaction_type: string;
+  payment_method: string;
+  amount: number;
+  created_by: string;
+  updated_by: string | null;
+  updated_at: string | null;
+}
+
+export interface FinancialJournalResponse {
+  success: boolean;
+  transactions: FinancialJournalTransaction[];
+  daily_totals: Record<string, Record<string, number>>;
+  period_totals: Record<string, number>;
+  grand_total: number;
+  transaction_count: number;
+}
+
+export const getFinancialJournal = async (filters: FinancialJournalFilters): Promise<FinancialJournalResponse> => {
+  try {
+    const params: Record<string, string> = {
+      start_date: filters.startDate,
+      end_date: filters.endDate,
+    };
+
+    if (filters.paymentMethod) {
+      params.payment_method = filters.paymentMethod;
+    }
+    if (filters.transactionType) {
+      params.transaction_type = filters.transactionType;
+    }
+    if (filters.bookingType) {
+      params.booking_type = filters.bookingType;
+    }
+
+    const response = await api.get<FinancialJournalResponse>('/api/financial-journal', { params });
+    return response.data;
+  } catch (error: any) {
+    console.error('Error fetching financial journal:', error);
+    throw new Error(error.response?.data?.message || 'Failed to fetch financial journal');
+  }
+};
+
+// Booking Payment Summary API
+export interface BookingPaymentSummary {
+  booking: {
+    id: number;
+    name: string;
+    phone: string;
+    booking_date: string;
+    time_slot: string;
+    booking_type: string;
+    is_cancelled: boolean;
+    created_by: string;
+  };
+  summary: {
+    total_price: number;
+    total_paid: number;
+    leftover: number;
+    status: string;
+  };
+  transactions: TransactionDetail[];
+}
+
+export const getBookingPaymentSummary = async (bookingId: number): Promise<BookingPaymentSummary> => {
+  try {
+    const response = await api.get<{ success: boolean } & BookingPaymentSummary>(
+      `/api/booking-payment-summary/${bookingId}`
+    );
+
+    if (!response.data.success) {
+      throw new Error('Failed to fetch booking payment summary');
+    }
+
+    return {
+      booking: response.data.booking,
+      summary: response.data.summary,
+      transactions: response.data.transactions
+    };
+  } catch (error: any) {
+    console.error('Error fetching booking payment summary:', error);
+    if (error.response?.status === 404) {
+      throw new Error('Booking not found');
+    }
+    throw new Error(error.response?.data?.message || 'Failed to fetch booking payment summary');
   }
 };

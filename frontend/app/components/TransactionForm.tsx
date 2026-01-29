@@ -160,7 +160,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="bg-surface bg-opacity-50 p-6 rounded-lg shadow-lg mb-8">
+    <form onSubmit={handleSubmit} className="bg-black/40 border border-gray-800 p-6 rounded-lg shadow-lg mb-8">
       {/* Form title changes based on mode */}
       <h2 className="text-2xl font-semibold text-white mb-6">
         {editingTransaction ? 'Edit Transaction' : 'Add Transaction'}
@@ -182,7 +182,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
                 type="date"
                 value={bookingDate}
                 onChange={(e) => setBookingDate(e.target.value)}
-                className="w-full p-2 rounded-md bg-gray-700 border-gray-600 text-white focus:ring-2 focus:ring-primary"
+                className="w-full p-2 rounded-md bg-black/20 border border-gray-700 text-white focus:border-orange-500 focus:outline-none transition-colors"
                 required
                 disabled={isLoading || isLoadingBookings}
               />
@@ -192,7 +192,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
               <select
                 value={selectedBooking}
                 onChange={(e) => setSelectedBooking(e.target.value)}
-                className="w-full p-2 rounded-md bg-gray-700 border-gray-600 text-white focus:ring-2 focus:ring-primary"
+                className="w-full p-2 rounded-md bg-black/20 border border-gray-700 text-white focus:border-orange-500 focus:outline-none transition-colors"
                 required
                 disabled={!bookingDate || isLoading || isLoadingBookings}
               >

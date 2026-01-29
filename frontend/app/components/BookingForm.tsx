@@ -1,5 +1,4 @@
 import React from 'react';
-import { useRouter } from 'next/navigation';
 
 const TIME_SLOTS = [
   "9:30 AM - 11:00 AM",
@@ -28,6 +27,16 @@ interface BookingFormProps {
   handleDelete: () => Promise<void>;
   transactionStatus?: 'PENDING' | 'PARTIAL' | 'SUCCESSFUL' | null;
   onManageTransactions?: (bookingId: number) => void;
+  bookingType: 'NORMAL' | 'ACADEMY';
+  setBookingType: (type: 'NORMAL' | 'ACADEMY') => void;
+  academyStartDate: string;
+  setAcademyStartDate: (date: string) => void;
+  academyEndDate: string;
+  setAcademyEndDate: (date: string) => void;
+  academyDaysOfWeek: string[];
+  setAcademyDaysOfWeek: (days: string[]) => void;
+  isBulkBooking: boolean;
+  setIsBulkBooking: (value: boolean) => void;
 }
 
 export default function BookingForm({
@@ -43,20 +52,54 @@ export default function BookingForm({
   handleSubmit,
   handleDelete,
   transactionStatus,
-  onManageTransactions
+  onManageTransactions,
+  bookingType,
+  setBookingType,
+  academyStartDate,
+  setAcademyStartDate,
+  academyEndDate,
+  setAcademyEndDate,
+  academyDaysOfWeek,
+  setAcademyDaysOfWeek,
+  isBulkBooking,
+  setIsBulkBooking
 }: BookingFormProps) {
-  const router = useRouter();
   return (
-    <form onSubmit={handleSubmit} className="bg-surface bg-opacity-50 p-6 rounded-lg shadow-lg">
+    <form onSubmit={handleSubmit} className="bg-black/40 border border-gray-800 p-6 rounded-lg shadow-lg">
       <h2 className="text-2xl font-semibold text-white mb-6">Add/Edit Booking</h2>
       <div className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-300 mb-2">Booking Type</label>
+          <div className="flex gap-4">
+            <label className="flex items-center cursor-pointer">
+              <input
+                type="radio"
+                value="NORMAL"
+                checked={bookingType === 'NORMAL'}
+                onChange={(e) => setBookingType(e.target.value as 'NORMAL' | 'ACADEMY')}
+                className="mr-2"
+              />
+              <span className="text-white">Normal</span>
+            </label>
+            <label className="flex items-center cursor-pointer">
+              <input
+                type="radio"
+                value="ACADEMY"
+                checked={bookingType === 'ACADEMY'}
+                onChange={(e) => setBookingType(e.target.value as 'NORMAL' | 'ACADEMY')}
+                className="mr-2"
+              />
+              <span className="text-white">Academy</span>
+            </label>
+          </div>
+        </div>
         <div>
           <label className="block text-sm font-medium text-gray-300">Name</label>
           <input
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="mt-1 block w-full rounded-md bg-gray-700 border-gray-600 text-white focus:ring-2 focus:ring-primary"
+            className="mt-1 block w-full rounded-md bg-black/20 border border-gray-700 text-white focus:border-orange-500 focus:outline-none transition-colors p-2"
             placeholder="Enter name"
             required
           />
@@ -67,27 +110,222 @@ export default function BookingForm({
             type="tel"
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
-            className="mt-1 block w-full rounded-md bg-gray-700 border-gray-600 text-white focus:ring-2 focus:ring-primary"
+            className="mt-1 block w-full rounded-md bg-black/20 border border-gray-700 text-white focus:border-orange-500 focus:outline-none transition-colors p-2"
             placeholder="Enter phone number"
             required
           />
         </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-300">Date</label>
-          <input
-            type="date"
-            value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
-            className="mt-1 block w-full rounded-md bg-gray-700 border-gray-600 text-white focus:ring-2 focus:ring-primary"
-            required
-          />
-        </div>
+        {bookingType === 'NORMAL' ? (
+          <>
+            <div>
+              <label className="flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isBulkBooking}
+                  onChange={(e) => setIsBulkBooking(e.target.checked)}
+                  className="mr-2"
+                />
+                <span className="text-sm font-medium text-gray-300">Bulk Booking (Multiple Days)</span>
+              </label>
+            </div>
+            {isBulkBooking ? (
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300">Start Date</label>
+                  <input
+                    type="date"
+                    value={academyStartDate}
+                    onChange={(e) => {
+                      setAcademyStartDate(e.target.value);
+                      setSelectedDate(e.target.value);
+                    }}
+                    className="mt-1 block w-full rounded-md bg-black/20 border border-gray-700 text-white focus:border-orange-500 focus:outline-none transition-colors p-2"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300">End Date</label>
+                  <input
+                    type="date"
+                    value={academyEndDate}
+                    onChange={(e) => setAcademyEndDate(e.target.value)}
+                    min={academyStartDate}
+                    className="mt-1 block w-full rounded-md bg-black/20 border border-gray-700 text-white focus:border-orange-500 focus:outline-none transition-colors p-2"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Days of Week</label>
+                  <select
+                    multiple
+                    value={academyDaysOfWeek}
+                    onChange={(e) => {
+                      const selected = Array.from(e.target.selectedOptions, option => option.value);
+                      setAcademyDaysOfWeek(selected);
+                    }}
+                    className="mt-1 block w-full rounded-md bg-gray-700 border-gray-600 text-white focus:ring-2 focus:ring-primary min-h-[120px]"
+                  >
+                    {['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'].map(day => (
+                      <option key={day} value={day} className="py-1">
+                        {day.charAt(0) + day.slice(1).toLowerCase()}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-gray-400">Hold Ctrl/Cmd to select multiple days</p>
+                </div>
+                {academyStartDate && academyEndDate && (
+                  <div className="p-3 bg-gray-800/50 rounded-lg border border-gray-600">
+                    <div className="text-sm text-gray-300">
+                      <div className="font-medium mb-1 text-orange-400">Bulk Booking Summary</div>
+                      <div className="text-gray-400">Duration: {
+                        (() => {
+                          const start = new Date(academyStartDate);
+                          const end = new Date(academyEndDate);
+                          let count = 0;
+                          let current = new Date(start);
+
+                          while (current <= end) {
+                            const dayName = current.toLocaleDateString('en-US', { weekday: 'long' }).toUpperCase();
+                            if (academyDaysOfWeek.length === 0 || academyDaysOfWeek.includes(dayName)) {
+                              count++;
+                            }
+                            current.setDate(current.getDate() + 1);
+                          }
+
+                          return count;
+                        })()
+                      } days{academyDaysOfWeek.length > 0 && ` (${academyDaysOfWeek.map(d => d.slice(0, 3)).join(', ')})`}</div>
+                      <div className="text-gray-400">Est. Cost: <span className="text-orange-400">₹{
+                        (() => {
+                          const start = new Date(academyStartDate);
+                          const end = new Date(academyEndDate);
+                          let count = 0;
+                          let current = new Date(start);
+
+                          while (current <= end) {
+                            const dayName = current.toLocaleDateString('en-US', { weekday: 'long' }).toUpperCase();
+                            if (academyDaysOfWeek.length === 0 || academyDaysOfWeek.includes(dayName)) {
+                              count++;
+                            }
+                            current.setDate(current.getDate() + 1);
+                          }
+
+                          return (count * 2000).toLocaleString();
+                        })()
+                      }</span> (₹2,000/day)</div>
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div>
+                <label className="block text-sm font-medium text-gray-300">Date</label>
+                <input
+                  type="date"
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  className="mt-1 block w-full rounded-md bg-gray-700 border-gray-600 text-white focus:ring-2 focus:ring-primary"
+                  required
+                />
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <div>
+              <label className="block text-sm font-medium text-gray-300">Academy Start Date</label>
+              <input
+                type="date"
+                value={academyStartDate}
+                onChange={(e) => {
+                  setAcademyStartDate(e.target.value);
+                  setSelectedDate(e.target.value);
+                }}
+                className="mt-1 block w-full rounded-md bg-gray-700 border-gray-600 text-white focus:ring-2 focus:ring-primary"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300">Academy End Date</label>
+              <input
+                type="date"
+                value={academyEndDate}
+                onChange={(e) => setAcademyEndDate(e.target.value)}
+                min={academyStartDate}
+                className="mt-1 block w-full rounded-md bg-gray-700 border-gray-600 text-white focus:ring-2 focus:ring-primary"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Days of Week</label>
+              <select
+                multiple
+                value={academyDaysOfWeek}
+                onChange={(e) => {
+                  const selected = Array.from(e.target.selectedOptions, option => option.value);
+                  setAcademyDaysOfWeek(selected);
+                }}
+                className="mt-1 block w-full rounded-md bg-gray-700 border-gray-600 text-white focus:ring-2 focus:ring-primary min-h-[120px]"
+              >
+                {['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'].map(day => (
+                  <option key={day} value={day} className="py-1">
+                    {day.charAt(0) + day.slice(1).toLowerCase()}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-gray-400">Hold Ctrl/Cmd to select multiple days</p>
+            </div>
+            {academyStartDate && academyEndDate && (
+              <div className="p-3 bg-gray-800/50 rounded-lg border border-gray-600">
+                <div className="text-sm text-gray-300">
+                  <div className="font-medium mb-1 text-purple-400">Academy Booking Summary</div>
+                  <div className="text-gray-400">Duration: {
+                    (() => {
+                      const start = new Date(academyStartDate);
+                      const end = new Date(academyEndDate);
+                      let count = 0;
+                      let current = new Date(start);
+
+                      while (current <= end) {
+                        const dayName = current.toLocaleDateString('en-US', { weekday: 'long' }).toUpperCase();
+                        if (academyDaysOfWeek.length === 0 || academyDaysOfWeek.includes(dayName)) {
+                          count++;
+                        }
+                        current.setDate(current.getDate() + 1);
+                      }
+
+                      return count;
+                    })()
+                  } days{academyDaysOfWeek.length > 0 && ` (${academyDaysOfWeek.map(d => d.slice(0, 3)).join(', ')})`}</div>
+                  <div className="text-gray-400">Est. Cost: <span className="text-purple-400">₹{
+                    (() => {
+                      const start = new Date(academyStartDate);
+                      const end = new Date(academyEndDate);
+                      let count = 0;
+                      let current = new Date(start);
+
+                      while (current <= end) {
+                        const dayName = current.toLocaleDateString('en-US', { weekday: 'long' }).toUpperCase();
+                        if (academyDaysOfWeek.length === 0 || academyDaysOfWeek.includes(dayName)) {
+                          count++;
+                        }
+                        current.setDate(current.getDate() + 1);
+                      }
+
+                      return (count * 2000).toLocaleString();
+                    })()
+                  }</span> (₹2,000/day)</div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
         <div>
           <label className="block text-sm font-medium text-gray-300">Time Slot</label>
           <select
             value={selectedSlot}
             onChange={(e) => setSelectedSlot(e.target.value as TimeSlot)}
-            className="mt-1 block w-full rounded-md bg-gray-700 border-gray-600 text-white focus:ring-2 focus:ring-primary"
+            className="mt-1 block w-full rounded-md bg-black/20 border border-gray-700 text-white focus:border-orange-500 focus:outline-none transition-colors p-2"
             required
           >
             <option value="">Select a time slot</option>
@@ -98,68 +336,73 @@ export default function BookingForm({
         </div>
       </div>
 
-      {/* Transaction Status Section */}
+      {/* Payment Status Section - Compact */}
       {selectedBookingId && (
-        <div className="mt-6 p-4 bg-gray-800 bg-opacity-50 rounded-lg border border-gray-700">
-          <h3 className="text-lg font-semibold text-white mb-3">Payment Status</h3>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <span className="text-sm text-gray-300">Status:</span>
-              <span 
-                className={`px-3 py-1 rounded-full text-xs font-bold ${
-                  transactionStatus === 'SUCCESSFUL' ? 'bg-green-600 text-white' :
-                  transactionStatus === 'PARTIAL' ? 'bg-yellow-500 text-black' :
-                  transactionStatus === 'PENDING' ? 'bg-red-500 text-white' :
-                  'bg-gray-500 text-white'
-                }`}
-              >
-                {transactionStatus || 'NO PAYMENTS'}
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                if (selectedBookingId) {
-                  router.push(`/transactions?bookingId=${selectedBookingId}&date=${selectedDate}&slot=${encodeURIComponent(selectedSlot)}&name=${encodeURIComponent(name)}&phone=${encodeURIComponent(phone)}`);
-                }
-              }}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition duration-300 ease-in-out flex items-center space-x-2"
+        <div className="mt-4 flex items-center justify-between bg-black/30 border border-gray-700 rounded-md px-3 py-2">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-400">Payment:</span>
+            <span
+              className={`text-xs font-medium px-2 py-0.5 rounded ${
+                transactionStatus === 'SUCCESSFUL'
+                  ? 'bg-green-600/20 text-green-400 border border-green-600/30'
+                  : transactionStatus === 'PARTIAL'
+                  ? 'bg-orange-600/20 text-orange-400 border border-orange-600/30'
+                  : 'bg-red-600/20 text-red-400 border border-red-600/30'
+              }`}
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1" />
-              </svg>
-              <span>Manage Payments</span>
-            </button>
+              {transactionStatus === 'SUCCESSFUL' ? 'PAID' : transactionStatus === 'PARTIAL' ? 'PARTIAL' : 'UNPAID'}
+            </span>
           </div>
+          <button
+            type="button"
+            onClick={() => {
+              if (selectedBookingId && onManageTransactions) {
+                onManageTransactions(selectedBookingId);
+              }
+            }}
+            className="text-xs px-3 py-1.5 bg-gray-700 text-gray-200 rounded hover:bg-gray-600 transition-colors border border-gray-600"
+          >
+            Manage Payments
+          </button>
         </div>
       )}
 
-      {/* Quick Add Payment Button for New Bookings */}
+      {/* Quick Add Payment Tip for New Bookings */}
       {!selectedBookingId && name && phone && selectedDate && selectedSlot && (
-        <div className="mt-6 p-4 bg-blue-800 bg-opacity-20 rounded-lg border border-blue-600">
-          <div className="flex items-center space-x-3">
-            <svg className="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="mt-4 px-3 py-2 bg-gray-800/50 rounded border border-gray-700">
+          <div className="flex items-center gap-2">
+            <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <span className="text-sm text-blue-300">
-              After saving this booking, you can immediately add payment details using the "Manage Payments" button.
+            <span className="text-xs text-gray-400">
+              After saving, you can add payments via "Manage Payments"
             </span>
           </div>
         </div>
       )}
 
-      <div className="mt-6 flex justify-end space-x-3">
+      <div className="mt-6 flex gap-2">
         {selectedBookingId ? (
           <>
-            <button type="submit" className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-hover transition duration-300 ease-in-out">
+            <button
+              type="submit"
+              className="flex-1 px-4 py-2 text-sm font-medium bg-orange-600 text-white rounded border border-orange-600 hover:bg-orange-500 transition-colors"
+            >
               Update Booking
             </button>
-            <button type="button" onClick={handleDelete} className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition duration-300 ease-in-out">
-              Delete Booking
+            <button
+              type="button"
+              onClick={handleDelete}
+              className="px-4 py-2 text-sm font-medium bg-transparent text-red-400 rounded border border-red-600/50 hover:bg-red-600/10 transition-colors"
+            >
+              Delete
             </button>
           </>
         ) : (
-          <button type="submit" className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary-hover transition duration-300 ease-in-out">
+          <button
+            type="submit"
+            className="w-full px-4 py-2 text-sm font-medium bg-orange-600 text-white rounded border border-orange-600 hover:bg-orange-500 transition-colors"
+          >
             Add Booking
           </button>
         )}

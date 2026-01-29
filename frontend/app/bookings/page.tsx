@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation';
 import AdminLayout from '../components/AdminLayout';
 import BookingForm from '../components/BookingForm';
 import BookingMatrix from '../components/BookingMatrix';
-import { fetchBookings, addBooking, updateBooking, deleteBooking } from '../api/bookings';
+import BookingDetailsModal from '../components/BookingDetailsModal';
+import { fetchBookings, addBooking, updateBooking, deleteBooking, checkBookingHasTransactions } from '../api/bookings';
 import { getTransactionSummaries } from '../api/transactions';
 import Cookies from 'js-cookie';
 import axios from 'axios';
@@ -31,6 +32,11 @@ interface Booking {
   time_slot: TimeSlot;
   booked_by: string;
   transaction_status?: 'PENDING' | 'PARTIAL' | 'SUCCESSFUL' | null;
+  booking_type: 'NORMAL' | 'ACADEMY';
+  actual_name?: string;
+  academy_start_date?: string;
+  academy_end_date?: string;
+  academy_days_of_week?: string;
 }
 
 type BookingsData = Record<string, Booking>;
@@ -49,6 +55,17 @@ export default function BookingsPage() {
   const [endDate, setEndDate] = useState('');
   const [selectedBookingId, setSelectedBookingId] = useState<number | null>(null);
   const [selectedBookingTransactionStatus, setSelectedBookingTransactionStatus] = useState<'PENDING' | 'PARTIAL' | 'SUCCESSFUL' | null>(null);
+
+  // Academy booking state variables
+  const [bookingType, setBookingType] = useState<'NORMAL' | 'ACADEMY'>('NORMAL');
+  const [academyStartDate, setAcademyStartDate] = useState('');
+  const [academyEndDate, setAcademyEndDate] = useState('');
+  const [academyDaysOfWeek, setAcademyDaysOfWeek] = useState<string[]>(['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY']);
+  const [isBulkBooking, setIsBulkBooking] = useState(false);
+
+  // Modal state for booking details
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalBookingId, setModalBookingId] = useState<number | null>(null);
 
   useEffect(() => {
     const token = Cookies.get('token');
@@ -127,11 +144,30 @@ export default function BookingsPage() {
       setPhone(booking.phone);
       setSelectedBookingId(booking.id);
       setSelectedBookingTransactionStatus(booking.transaction_status || null);
+
+      // Load academy data if it's an academy booking
+      if (booking.booking_type === 'ACADEMY') {
+        setBookingType('ACADEMY');
+        setAcademyStartDate(booking.academy_start_date || '');
+        setAcademyEndDate(booking.academy_end_date || '');
+        setAcademyDaysOfWeek(booking.academy_days_of_week ? booking.academy_days_of_week.split(',') : ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY']);
+      } else {
+        setBookingType('NORMAL');
+        setAcademyStartDate('');
+        setAcademyEndDate('');
+        setAcademyDaysOfWeek(['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY']);
+      }
     } else {
       setName('');
       setPhone('');
       setSelectedBookingId(null);
       setSelectedBookingTransactionStatus(null);
+      // Reset to normal for new bookings
+      setBookingType('NORMAL');
+      setAcademyStartDate('');
+      setAcademyEndDate('');
+      setAcademyDaysOfWeek(['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY']);
+      setIsBulkBooking(false);
     }
   };
 
@@ -140,9 +176,32 @@ export default function BookingsPage() {
     try {
       let result;
       if (selectedBookingId && selectedSlot) {
-        result = await updateBooking(selectedBookingId, name, phone, selectedDate, selectedSlot, startDate , endDate);
+        result = await updateBooking(
+          selectedBookingId,
+          name,
+          phone,
+          selectedDate,
+          selectedSlot,
+          startDate,
+          endDate,
+          bookingType,
+          academyStartDate,
+          academyEndDate,
+          academyDaysOfWeek
+        );
       } else if (selectedSlot) {
-        result = await addBooking(name, phone, selectedDate, selectedSlot,  startDate,  endDate );
+        result = await addBooking(
+          name,
+          phone,
+          selectedDate,
+          selectedSlot,
+          startDate,
+          endDate,
+          bookingType,
+          academyStartDate,
+          academyEndDate,
+          academyDaysOfWeek
+        );
       } else {
         throw new Error("No time slot selected");
       }
@@ -167,18 +226,64 @@ export default function BookingsPage() {
     }
   };
 
-  // Update the handleDelete function to pass date range parameters
+  // Update the handleDelete function to handle soft-delete with payment retention
   const handleDelete = async () => {
     if (selectedBookingId) {
       try {
-        // Pass current date range to deleteBooking
-        await deleteBooking(selectedBookingId, startDate, endDate);
-        fetchBookingsData();
-        resetForm();
+        // Check if booking has transactions
+        const hasTransactions = await checkBookingHasTransactions(selectedBookingId);
+        let retainPayments = true;
+
+        if (hasTransactions) {
+          // Show confirmation dialog for bookings with payments
+          const userChoice = confirm(
+            'This booking has payment records.\n\n' +
+            'Click OK to cancel the booking but RETAIN payment records for accounting.\n' +
+            'Click Cancel to abort deletion.'
+          );
+
+          if (!userChoice) {
+            return; // User aborted
+          }
+
+          // Ask if they want to hard delete (lose payment records)
+          const hardDelete = confirm(
+            'Do you also want to DELETE the payment records?\n\n' +
+            'Click OK to permanently delete ALL payment records (not recommended).\n' +
+            'Click Cancel to keep payment records for financial journal.'
+          );
+
+          retainPayments = !hardDelete;
+        } else {
+          // Simple confirmation for bookings without payments
+          const confirmDelete = confirm('Are you sure you want to delete this booking?');
+          if (!confirmDelete) {
+            return;
+          }
+          retainPayments = false; // No payments to retain
+        }
+
+        // Pass current date range and retain_payments flag to deleteBooking
+        const result = await deleteBooking(selectedBookingId, startDate, endDate, retainPayments);
+
+        if (result.success) {
+          alert(result.message);
+          // Update bookings from response or refetch
+          if (result.bookingsData) {
+            setBookings(result.bookingsData);
+          } else {
+            fetchBookingsData();
+          }
+          resetForm();
+        } else {
+          alert(result.message || 'Failed to delete booking');
+        }
       } catch (error) {
         console.error('Failed to delete booking:', error);
         if (axios.isAxiosError(error) && error.response?.status === 401) {
           router.push('/login');
+        } else {
+          alert('An error occurred while deleting the booking');
         }
       }
     }
@@ -191,6 +296,28 @@ export default function BookingsPage() {
     setSelectedSlot('');
     setSelectedBookingId(null);
     setSelectedBookingTransactionStatus(null);
+    setBookingType('NORMAL');
+    setAcademyStartDate('');
+    setAcademyEndDate('');
+    setAcademyDaysOfWeek(['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY']);
+    setIsBulkBooking(false);
+  };
+
+  // Open booking details modal for payment management
+  const handleOpenPaymentModal = (bookingId: number) => {
+    setModalBookingId(bookingId);
+    setIsModalOpen(true);
+  };
+
+  // Handle modal close and refresh data
+  const handleModalClose = () => {
+    setIsModalOpen(false);
+    setModalBookingId(null);
+  };
+
+  // Refresh bookings data when transactions are updated in modal
+  const handleTransactionUpdate = () => {
+    fetchBookingsData();
   };
 
   if (isLoading) {
@@ -201,7 +328,7 @@ export default function BookingsPage() {
     <AdminLayout>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
         <h1 className="text-3xl font-light text-white mb-8">Bookings</h1>
-        
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
           <div className="lg:col-span-1">
             <BookingForm
@@ -217,32 +344,45 @@ export default function BookingsPage() {
               handleSubmit={handleSubmit}
               handleDelete={handleDelete}
               transactionStatus={selectedBookingTransactionStatus}
+              onManageTransactions={handleOpenPaymentModal}
+              bookingType={bookingType}
+              setBookingType={setBookingType}
+              academyStartDate={academyStartDate}
+              setAcademyStartDate={setAcademyStartDate}
+              academyEndDate={academyEndDate}
+              setAcademyEndDate={setAcademyEndDate}
+              academyDaysOfWeek={academyDaysOfWeek}
+              setAcademyDaysOfWeek={setAcademyDaysOfWeek}
+              isBulkBooking={isBulkBooking}
+              setIsBulkBooking={setIsBulkBooking}
             />
 
-            <div className="mt-8">
-              <h2 className="text-lg font-medium text-white mb-4">Date Range</h2>
-              <div className="flex flex-col space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-2">Start Date</label>
-                  <input
-                    type="date"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                    className="block w-full rounded-md bg-black/20 border border-gray-700 text-white focus:border-orange-500 focus:outline-none transition-colors p-3"
-                  />
+            <div className="mt-6 bg-black/40 border border-gray-800 rounded-lg p-4">
+              <h2 className="text-sm font-medium text-gray-400 mb-3">Date Range</h2>
+              <div className="flex flex-col space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Start</label>
+                    <input
+                      type="date"
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
+                      className="block w-full rounded bg-black/20 border border-gray-700 text-white text-sm focus:border-orange-500 focus:outline-none transition-colors p-2"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">End</label>
+                    <input
+                      type="date"
+                      value={endDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                      className="block w-full rounded bg-black/20 border border-gray-700 text-white text-sm focus:border-orange-500 focus:outline-none transition-colors p-2"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-400 mb-2">End Date</label>
-                  <input
-                    type="date"
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                    className="block w-full rounded-md bg-black/20 border border-gray-700 text-white focus:border-orange-500 focus:outline-none transition-colors p-3"
-                  />
-                </div>
-                <button 
-                  onClick={handleDateRangeChange} 
-                  className="w-full px-4 py-3 bg-orange-600 hover:bg-orange-700 text-white rounded-md transition-all duration-200 hover:shadow-lg font-medium"
+                <button
+                  onClick={handleDateRangeChange}
+                  className="w-full px-3 py-2 text-sm font-medium bg-gray-700 text-gray-200 rounded border border-gray-600 hover:bg-gray-600 transition-colors"
                 >
                   Update Range
                 </button>
@@ -251,15 +391,25 @@ export default function BookingsPage() {
           </div>
 
           <div className="lg:col-span-2">
-            <BookingMatrix 
-              bookings={bookings} 
-              handleCellClick={handleCellClick} 
+            <BookingMatrix
+              bookings={bookings}
+              handleCellClick={handleCellClick}
               startDate={startDate}
               endDate={endDate}
             />
           </div>
         </div>
       </div>
+
+      {/* Booking Details Modal for Payment Management */}
+      {modalBookingId && (
+        <BookingDetailsModal
+          bookingId={modalBookingId}
+          isOpen={isModalOpen}
+          onClose={handleModalClose}
+          onTransactionUpdate={handleTransactionUpdate}
+        />
+      )}
     </AdminLayout>
   );
 }
