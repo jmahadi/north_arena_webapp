@@ -28,6 +28,12 @@ app.add_middleware(
 app.include_router(api_router)
 
 
+# Health check endpoint for Railway
+@app.get("/")
+async def health_check():
+    return {"status": "healthy", "service": "North Arena Booking System"}
+
+
 @app.on_event("startup")
 async def startup_event():
     """
