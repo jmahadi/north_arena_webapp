@@ -1,4 +1,5 @@
 import logging
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.exc import SQLAlchemyError
@@ -13,15 +14,14 @@ logger = logging.getLogger(__name__)
 # Initialize FastAPI app
 app = FastAPI(title="North Arena Booking System", version="1.0.0")
 
-# Configure CORS
-# Since specific CORS origins are not provided in the config, we'll allow all origins
-# Note: In production, it's better to specify allowed origins explicitly
+# Configure CORS - use environment variable for production frontend URL
+cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Allows all origins
+    allow_origins=cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods
-    allow_headers=["*"],  # Allows all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Include API router
