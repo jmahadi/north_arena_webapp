@@ -29,7 +29,7 @@ app.include_router(api_router)
 
 
 # Health check endpoint for Railway
-@app.get("/")
+@app.get("/health")
 async def health_check():
     return {"status": "healthy", "service": "North Arena Booking System"}
 
