@@ -183,9 +183,10 @@ INDEX ROUTE
 --------------------
 '''
 
-@router.get("/", response_class=HTMLResponse)
+@router.get("/")
 async def index(request: Request):
-    return RedirectResponse(url="/login", status_code=303)
+    # Return 200 OK for healthchecks (Railway checks / by default)
+    return {"status": "healthy", "service": "North Arena Booking System"}
 
 @router.post("/register", response_class=HTMLResponse)
 async def register(request: Request, username: str = Form(...), email: str = Form(...), password: str = Form(...), db: AsyncSession = Depends(get_db)):
