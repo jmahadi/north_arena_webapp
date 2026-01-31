@@ -3,6 +3,7 @@
 import React, { useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Cookies from 'js-cookie';
+import LoadingSpinner from '../components/LoadingSpinner';
 
 const TransactionsContent = () => {
   const router = useRouter();
@@ -29,10 +30,7 @@ const TransactionsContent = () => {
 
   return (
     <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-      <div className="text-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-orange-500 mx-auto mb-4"></div>
-        <p className="text-gray-400">Redirecting...</p>
-      </div>
+      <LoadingSpinner size="large" text="Redirecting..." />
     </div>
   );
 };
@@ -41,10 +39,7 @@ export default function TransactionsPage() {
   return (
     <Suspense fallback={
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-orange-500 mx-auto mb-4"></div>
-          <p className="text-gray-400">Loading...</p>
-        </div>
+        <LoadingSpinner size="large" text="Loading..." />
       </div>
     }>
       <TransactionsContent />
