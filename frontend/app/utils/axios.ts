@@ -2,7 +2,7 @@ import axios, { AxiosError, InternalAxiosRequestConfig, AxiosResponse } from 'ax
 import Cookies from 'js-cookie';
 
 const api = axios.create({
-  baseURL: 'http://localhost:8000',  // Replace with your API base URL
+  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000',
   timeout: 15000,
 });
 
