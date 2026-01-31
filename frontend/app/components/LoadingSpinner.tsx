@@ -1,7 +1,6 @@
 'use client';
 
 import React from 'react';
-import Image from 'next/image';
 
 interface LoadingSpinnerProps {
   size?: 'small' | 'medium' | 'large';
@@ -14,11 +13,13 @@ const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({
   text = 'Loading...',
   fullScreen = false
 }) => {
-  const sizeClasses = {
-    small: 'w-8 h-8',
-    medium: 'w-16 h-16',
-    large: 'w-24 h-24',
+  const sizeConfig = {
+    small: { container: 'w-12 h-12', logo: 'w-6 h-6', border: 'border-2' },
+    medium: { container: 'w-20 h-20', logo: 'w-10 h-10', border: 'border-4' },
+    large: { container: 'w-28 h-28', logo: 'w-14 h-14', border: 'border-4' },
   };
+
+  const config = sizeConfig[size];
 
   const containerClasses = fullScreen
     ? 'fixed inset-0 bg-gray-900 flex flex-col items-center justify-center z-50'
@@ -26,19 +27,19 @@ const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({
 
   return (
     <div className={containerClasses}>
-      {/* Logo with pulse animation */}
-      <div className={`relative ${sizeClasses[size]}`}>
+      {/* Spinner container */}
+      <div className={`relative ${config.container}`}>
         {/* Spinning ring */}
-        <div className="absolute inset-0 rounded-full border-4 border-orange-500/30 border-t-orange-500 animate-spin"></div>
+        <div
+          className={`absolute inset-0 rounded-full ${config.border} border-orange-500/30 border-t-orange-500 animate-spin`}
+        />
 
-        {/* Logo in center */}
-        <div className="absolute inset-2 flex items-center justify-center">
-          <Image
+        {/* Logo in center - using img tag for reliability */}
+        <div className="absolute inset-0 flex items-center justify-center p-2">
+          <img
             src="/images/White-Logomark.png"
             alt="North Arena"
-            width={size === 'small' ? 24 : size === 'medium' ? 40 : 64}
-            height={size === 'small' ? 24 : size === 'medium' ? 40 : 64}
-            className="animate-pulse"
+            className={`${config.logo} object-contain animate-pulse`}
           />
         </div>
       </div>
