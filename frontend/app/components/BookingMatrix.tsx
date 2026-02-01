@@ -51,8 +51,10 @@ export default function BookingMatrix({ bookings, handleCellClick, startDate, en
   const [showLeftIndicator, setShowLeftIndicator] = useState(false);
   const [showRightIndicator, setShowRightIndicator] = useState(false);
   const scrollDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const hasUserScrolledRef = useRef(false);
+  const lastScrollLeftRef = useRef(0);
 
-  // Handle scroll to detect edges
+  // Handle scroll to detect edges - only trigger loading after user has scrolled
   const handleScroll = useCallback(() => {
     const container = scrollContainerRef.current;
     if (!container || isLoadingMore) return;
@@ -60,25 +62,38 @@ export default function BookingMatrix({ bookings, handleCellClick, startDate, en
     const { scrollLeft, scrollWidth, clientWidth } = container;
     const scrollRight = scrollWidth - clientWidth - scrollLeft;
 
-    // Show indicators when near edges (within 50px)
-    setShowLeftIndicator(scrollLeft < 50 && onLoadPreviousWeek !== undefined);
-    setShowRightIndicator(scrollRight < 50 && onLoadNextWeek !== undefined);
+    // Detect if user has actually scrolled (not just initial position)
+    if (Math.abs(scrollLeft - lastScrollLeftRef.current) > 10) {
+      hasUserScrolledRef.current = true;
+    }
+    lastScrollLeftRef.current = scrollLeft;
+
+    // Only show indicators if user has scrolled
+    if (hasUserScrolledRef.current) {
+      setShowLeftIndicator(scrollLeft < 50 && onLoadPreviousWeek !== undefined);
+      setShowRightIndicator(scrollRight < 50 && onLoadNextWeek !== undefined);
+    }
 
     // Debounce the actual loading to prevent multiple triggers
     if (scrollDebounceRef.current) {
       clearTimeout(scrollDebounceRef.current);
     }
 
-    scrollDebounceRef.current = setTimeout(() => {
-      // Load previous week when scrolled to the very left edge
-      if (scrollLeft <= 5 && onLoadPreviousWeek) {
-        onLoadPreviousWeek();
-      }
-      // Load next week when scrolled to the very right edge
-      else if (scrollRight <= 5 && onLoadNextWeek) {
-        onLoadNextWeek();
-      }
-    }, 150);
+    // Only trigger loading if user has actively scrolled
+    if (hasUserScrolledRef.current) {
+      scrollDebounceRef.current = setTimeout(() => {
+        // Load previous week when scrolled to the very left edge
+        if (scrollLeft <= 5 && onLoadPreviousWeek) {
+          hasUserScrolledRef.current = false; // Reset after triggering
+          onLoadPreviousWeek();
+        }
+        // Load next week when scrolled to the very right edge
+        else if (scrollRight <= 5 && onLoadNextWeek) {
+          hasUserScrolledRef.current = false; // Reset after triggering
+          onLoadNextWeek();
+        }
+      }, 300);
+    }
   }, [onLoadPreviousWeek, onLoadNextWeek, isLoadingMore]);
 
   // Set up scroll listener
@@ -86,8 +101,6 @@ export default function BookingMatrix({ bookings, handleCellClick, startDate, en
     const container = scrollContainerRef.current;
     if (container) {
       container.addEventListener('scroll', handleScroll);
-      // Initial check
-      handleScroll();
       return () => {
         container.removeEventListener('scroll', handleScroll);
         if (scrollDebounceRef.current) {
@@ -97,17 +110,11 @@ export default function BookingMatrix({ bookings, handleCellClick, startDate, en
     }
   }, [handleScroll]);
 
-  // Check scroll position on mount and when dates change
+  // Reset scroll tracking when dates change
   useEffect(() => {
-    const container = scrollContainerRef.current;
-    if (container) {
-      // Small delay to allow DOM to update
-      setTimeout(() => {
-        const { scrollWidth, clientWidth } = container;
-        setShowRightIndicator(scrollWidth > clientWidth && onLoadNextWeek !== undefined);
-      }, 100);
-    }
-  }, [startDate, endDate, onLoadNextWeek]);
+    hasUserScrolledRef.current = false;
+    lastScrollLeftRef.current = 0;
+  }, [startDate, endDate]);
   const getDatesInRange = (start: string, end: string) => {
     const dates = [];
     let currentDate = new Date(start);
