@@ -374,16 +374,13 @@ export default function SlotPricesPage() {
     return (
       <AdminLayout>
         <div className="flex flex-col items-center justify-center h-64">
-          <div className="relative" style={{ width: 64, height: 64 }}>
-            <svg className="animate-spin" style={{ width: 64, height: 64 }} viewBox="0 0 50 50">
-              <circle cx="25" cy="25" r="20" fill="none" stroke="rgba(249, 115, 22, 0.3)" strokeWidth={4} />
-              <circle cx="25" cy="25" r="20" fill="none" stroke="#f97316" strokeWidth={4} strokeLinecap="round" strokeDasharray="31.4 94.2" />
+          <div className="relative" style={{ width: 80, height: 80 }}>
+            <svg className="animate-spin" style={{ width: 80, height: 80 }} viewBox="0 0 50 50">
+              <circle cx="25" cy="25" r="22" fill="none" stroke="rgba(249, 115, 22, 0.2)" strokeWidth={3} />
+              <circle cx="25" cy="25" r="22" fill="none" stroke="#f97316" strokeWidth={3} strokeLinecap="round" strokeDasharray="34.5 103.6" />
             </svg>
             <div className="absolute inset-0 flex items-center justify-center">
-              <svg className="animate-pulse" style={{ width: 32, height: 32 }} viewBox="0 0 24 24" fill="none">
-                <circle cx="12" cy="12" r="10" stroke="white" strokeWidth="1.5" fill="none" />
-                <circle cx="12" cy="12" r="3" fill="white" />
-              </svg>
+              <img src="/images/White-Logomark.png" alt="Loading" className="w-10 h-10 object-contain animate-fade-in-out" />
             </div>
           </div>
           <p className="mt-3 text-gray-400 text-sm">Loading slots & prices...</p>
@@ -405,17 +402,17 @@ export default function SlotPricesPage() {
         )}
 
         {/* Tab Navigation */}
-        <div className="mb-8">
-          <nav className="flex space-x-1 p-1 bg-black/20 rounded-lg border border-gray-800">
+        <div className="mb-8 overflow-x-auto">
+          <nav className="flex space-x-1 p-1 bg-black/20 rounded-lg border border-gray-800 min-w-max">
             {[
-              { key: 'add-price', label: 'Price Management' },
-              { key: 'manage-slots', label: 'Manage Slots' },
-              { key: 'price-summary', label: 'Price Overview' }
+              { key: 'add-price', label: 'Pricing' },
+              { key: 'manage-slots', label: 'Slots' },
+              { key: 'price-summary', label: 'Overview' }
             ].map(tab => (
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key as any)}
-                className={`px-4 py-2 rounded-md font-medium transition-all duration-200 ${
+                className={`px-3 py-2 rounded-md font-medium transition-all duration-200 text-sm whitespace-nowrap ${
                   activeTab === tab.key
                     ? 'bg-orange-600 text-white shadow-lg'
                     : 'text-gray-400 hover:text-gray-300 hover:bg-gray-800/50'

@@ -43,3 +43,13 @@ img {
   image-rendering: crisp-edges;
 }
 
+/* Custom fade animation for loading spinner */
+@keyframes fade-in-out {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+.animate-fade-in-out {
+  animation: fade-in-out 1.5s ease-in-out infinite;
+}
+

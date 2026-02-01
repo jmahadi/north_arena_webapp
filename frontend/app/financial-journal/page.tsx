@@ -163,9 +163,9 @@ export default function FinancialJournalPage() {
             <button
               key={preset}
               onClick={() => setQuickRange(preset as any)}
-              className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm rounded transition-colors"
+              className="px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs rounded transition-colors"
             >
-              {preset === 'today' ? 'Today' : preset === 'last7' ? '7 Days' : preset === 'last30' ? '30 Days' : 'This Month'}
+              {preset === 'today' ? 'Today' : preset === 'last7' ? '7D' : preset === 'last30' ? '30D' : 'Month'}
             </button>
           ))}
           <div className="flex items-center gap-2 ml-auto">
@@ -227,15 +227,15 @@ export default function FinancialJournalPage() {
           <div className="ml-auto flex items-center gap-1 bg-gray-800 rounded p-0.5">
             <button
               onClick={() => setViewMode('all')}
-              className={`px-3 py-1 rounded text-sm transition-colors ${viewMode === 'all' ? 'bg-gray-700 text-white' : 'text-gray-400'}`}
+              className={`px-2 py-1 rounded text-xs transition-colors ${viewMode === 'all' ? 'bg-gray-700 text-white' : 'text-gray-400'}`}
             >
-              All
+              List
             </button>
             <button
               onClick={() => setViewMode('daily')}
-              className={`px-3 py-1 rounded text-sm transition-colors ${viewMode === 'daily' ? 'bg-gray-700 text-white' : 'text-gray-400'}`}
+              className={`px-2 py-1 rounded text-xs transition-colors ${viewMode === 'daily' ? 'bg-gray-700 text-white' : 'text-gray-400'}`}
             >
-              Daily
+              Summary
             </button>
           </div>
         </div>
@@ -250,16 +250,13 @@ export default function FinancialJournalPage() {
         {/* Loading */}
         {isLoading ? (
           <div className="flex flex-col items-center justify-center py-12">
-            <div className="relative" style={{ width: 64, height: 64 }}>
-              <svg className="animate-spin" style={{ width: 64, height: 64 }} viewBox="0 0 50 50">
-                <circle cx="25" cy="25" r="20" fill="none" stroke="rgba(249, 115, 22, 0.3)" strokeWidth={4} />
-                <circle cx="25" cy="25" r="20" fill="none" stroke="#f97316" strokeWidth={4} strokeLinecap="round" strokeDasharray="31.4 94.2" />
+            <div className="relative" style={{ width: 80, height: 80 }}>
+              <svg className="animate-spin" style={{ width: 80, height: 80 }} viewBox="0 0 50 50">
+                <circle cx="25" cy="25" r="22" fill="none" stroke="rgba(249, 115, 22, 0.2)" strokeWidth={3} />
+                <circle cx="25" cy="25" r="22" fill="none" stroke="#f97316" strokeWidth={3} strokeLinecap="round" strokeDasharray="34.5 103.6" />
               </svg>
               <div className="absolute inset-0 flex items-center justify-center">
-                <svg className="animate-pulse" style={{ width: 32, height: 32 }} viewBox="0 0 24 24" fill="none">
-                  <circle cx="12" cy="12" r="10" stroke="white" strokeWidth="1.5" fill="none" />
-                  <circle cx="12" cy="12" r="3" fill="white" />
-                </svg>
+                <img src="/images/White-Logomark.png" alt="Loading" className="w-10 h-10 object-contain animate-fade-in-out" />
               </div>
             </div>
             <p className="mt-3 text-gray-400 text-sm">Loading transactions...</p>

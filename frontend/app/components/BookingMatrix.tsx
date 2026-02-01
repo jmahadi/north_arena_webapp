@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 
 const TIME_SLOTS = [
   "9:30 AM - 11:00 AM",
@@ -41,9 +41,73 @@ interface BookingMatrixProps {
   handleCellClick: (date: string, slot: TimeSlot) => void;
   startDate: string;
   endDate: string;
+  onLoadPreviousWeek?: () => void;
+  onLoadNextWeek?: () => void;
+  isLoadingMore?: boolean;
 }
 
-export default function BookingMatrix({ bookings, handleCellClick, startDate, endDate }: BookingMatrixProps) {
+export default function BookingMatrix({ bookings, handleCellClick, startDate, endDate, onLoadPreviousWeek, onLoadNextWeek, isLoadingMore }: BookingMatrixProps) {
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [showLeftIndicator, setShowLeftIndicator] = useState(false);
+  const [showRightIndicator, setShowRightIndicator] = useState(false);
+  const scrollDebounceRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Handle scroll to detect edges
+  const handleScroll = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (!container || isLoadingMore) return;
+
+    const { scrollLeft, scrollWidth, clientWidth } = container;
+    const scrollRight = scrollWidth - clientWidth - scrollLeft;
+
+    // Show indicators when near edges (within 50px)
+    setShowLeftIndicator(scrollLeft < 50 && onLoadPreviousWeek !== undefined);
+    setShowRightIndicator(scrollRight < 50 && onLoadNextWeek !== undefined);
+
+    // Debounce the actual loading to prevent multiple triggers
+    if (scrollDebounceRef.current) {
+      clearTimeout(scrollDebounceRef.current);
+    }
+
+    scrollDebounceRef.current = setTimeout(() => {
+      // Load previous week when scrolled to the very left edge
+      if (scrollLeft <= 5 && onLoadPreviousWeek) {
+        onLoadPreviousWeek();
+      }
+      // Load next week when scrolled to the very right edge
+      else if (scrollRight <= 5 && onLoadNextWeek) {
+        onLoadNextWeek();
+      }
+    }, 150);
+  }, [onLoadPreviousWeek, onLoadNextWeek, isLoadingMore]);
+
+  // Set up scroll listener
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (container) {
+      container.addEventListener('scroll', handleScroll);
+      // Initial check
+      handleScroll();
+      return () => {
+        container.removeEventListener('scroll', handleScroll);
+        if (scrollDebounceRef.current) {
+          clearTimeout(scrollDebounceRef.current);
+        }
+      };
+    }
+  }, [handleScroll]);
+
+  // Check scroll position on mount and when dates change
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (container) {
+      // Small delay to allow DOM to update
+      setTimeout(() => {
+        const { scrollWidth, clientWidth } = container;
+        setShowRightIndicator(scrollWidth > clientWidth && onLoadNextWeek !== undefined);
+      }, 100);
+    }
+  }, [startDate, endDate, onLoadNextWeek]);
   const getDatesInRange = (start: string, end: string) => {
     const dates = [];
     let currentDate = new Date(start);
@@ -60,8 +124,45 @@ export default function BookingMatrix({ bookings, handleCellClick, startDate, en
   const dateRange = getDatesInRange(startDate, endDate);
 
   return (
-    <div className="bg-black/40 border border-gray-800 rounded-lg p-4">
-        <div className="overflow-x-auto">
+    <div className="bg-black/40 border border-gray-800 rounded-lg p-4 relative">
+        {/* Left edge indicator */}
+        {showLeftIndicator && (
+          <div className="absolute left-0 top-0 bottom-0 w-12 bg-gradient-to-r from-orange-500/20 to-transparent z-20 flex items-center justify-start pl-1 pointer-events-none">
+            <div className="flex flex-col items-center text-orange-400 animate-pulse">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+              <span className="text-[9px] font-medium">Prev</span>
+            </div>
+          </div>
+        )}
+
+        {/* Right edge indicator */}
+        {showRightIndicator && (
+          <div className="absolute right-0 top-0 bottom-0 w-12 bg-gradient-to-l from-orange-500/20 to-transparent z-20 flex items-center justify-end pr-1 pointer-events-none">
+            <div className="flex flex-col items-center text-orange-400 animate-pulse">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+              <span className="text-[9px] font-medium">Next</span>
+            </div>
+          </div>
+        )}
+
+        {/* Loading indicator */}
+        {isLoadingMore && (
+          <div className="absolute inset-0 bg-black/50 z-30 flex items-center justify-center rounded-lg">
+            <div className="flex items-center gap-2 text-orange-400">
+              <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2" opacity="0.3" />
+                <path fill="currentColor" d="M12 2a10 10 0 0 1 10 10h-2a8 8 0 0 0-8-8V2z" />
+              </svg>
+              <span className="text-sm">Loading...</span>
+            </div>
+          </div>
+        )}
+
+        <div ref={scrollContainerRef} className="overflow-x-auto scroll-smooth">
           <table className="w-full border-collapse">
             <thead>
               <tr>

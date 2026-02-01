@@ -336,23 +336,9 @@ export default function BookingForm({
         </div>
       </div>
 
-      {/* Payment Status Section - Compact */}
+      {/* Payment Status Section */}
       {selectedBookingId && (
-        <div className="mt-4 flex items-center justify-between bg-black/30 border border-gray-700 rounded-md px-3 py-2">
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-400">Payment:</span>
-            <span
-              className={`text-xs font-medium px-2 py-0.5 rounded ${
-                transactionStatus === 'SUCCESSFUL'
-                  ? 'bg-green-600/20 text-green-400 border border-green-600/30'
-                  : transactionStatus === 'PARTIAL'
-                  ? 'bg-orange-600/20 text-orange-400 border border-orange-600/30'
-                  : 'bg-red-600/20 text-red-400 border border-red-600/30'
-              }`}
-            >
-              {transactionStatus === 'SUCCESSFUL' ? 'PAID' : transactionStatus === 'PARTIAL' ? 'PARTIAL' : 'UNPAID'}
-            </span>
-          </div>
+        <div className="mt-4">
           <button
             type="button"
             onClick={() => {
@@ -360,9 +346,18 @@ export default function BookingForm({
                 onManageTransactions(selectedBookingId);
               }
             }}
-            className="text-xs px-3 py-1.5 bg-gray-700 text-gray-200 rounded hover:bg-gray-600 transition-colors border border-gray-600"
+            className={`w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-md transition-colors text-sm font-medium ${
+              transactionStatus === 'SUCCESSFUL'
+                ? 'bg-green-600/10 text-green-400 border border-green-600/30 hover:bg-green-600/20'
+                : transactionStatus === 'PARTIAL'
+                ? 'bg-orange-600/10 text-orange-400 border border-orange-600/30 hover:bg-orange-600/20'
+                : 'bg-gray-700 text-white border border-gray-600 hover:bg-gray-600'
+            }`}
           >
-            Manage Payments
+            <span>{transactionStatus === 'SUCCESSFUL' ? '✓ Paid' : transactionStatus === 'PARTIAL' ? 'Partial Payment' : 'Add Payment'}</span>
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
           </button>
         </div>
       )}
@@ -388,7 +383,7 @@ export default function BookingForm({
               type="submit"
               className="flex-1 px-4 py-2 text-sm font-medium bg-orange-600 text-white rounded border border-orange-600 hover:bg-orange-500 transition-colors"
             >
-              Update Booking
+              Update
             </button>
             <button
               type="button"
