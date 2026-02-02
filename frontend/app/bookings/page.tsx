@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import AdminLayout from '../components/AdminLayout';
 import BookingForm from '../components/BookingForm';
@@ -68,6 +68,9 @@ export default function BookingsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalBookingId, setModalBookingId] = useState<number | null>(null);
 
+  // Ref to track if we're doing an incremental load (skip full page reload)
+  const isIncrementalLoadRef = useRef(false);
+
   useEffect(() => {
     const token = Cookies.get('token');
     if (!token) {
@@ -81,6 +84,11 @@ export default function BookingsPage() {
   }, [router]);
 
   useEffect(() => {
+    // Skip full page reload if we're doing an incremental load
+    if (isIncrementalLoadRef.current) {
+      isIncrementalLoadRef.current = false;
+      return;
+    }
     if (startDate && endDate) {
       fetchBookingsData();
     }
@@ -183,8 +191,9 @@ export default function BookingsPage() {
 
     const newBookings = await fetchAndMergeBookings(newStartStr, prevWeekEndStr);
 
-    // Merge with existing bookings
+    // Merge with existing bookings and update date (skip full reload)
     setBookings(prev => ({ ...newBookings, ...prev }));
+    isIncrementalLoadRef.current = true;
     setStartDate(newStartStr);
     setIsLoadingMore(false);
   };
@@ -205,8 +214,9 @@ export default function BookingsPage() {
 
     const newBookings = await fetchAndMergeBookings(nextWeekStartStr, newEndStr);
 
-    // Merge with existing bookings
+    // Merge with existing bookings and update date (skip full reload)
     setBookings(prev => ({ ...prev, ...newBookings }));
+    isIncrementalLoadRef.current = true;
     setEndDate(newEndStr);
     setIsLoadingMore(false);
   };
