@@ -43,7 +43,7 @@ interface BookingMatrixProps {
   endDate: string;
   onLoadPreviousWeek?: () => void;
   onLoadNextWeek?: () => void;
-  isLoadingMore?: boolean;
+  isLoadingMore?: 'left' | 'right' | false;
 }
 
 export default function BookingMatrix({ bookings, handleCellClick, startDate, endDate, onLoadPreviousWeek, onLoadNextWeek, isLoadingMore }: BookingMatrixProps) {
@@ -57,7 +57,7 @@ export default function BookingMatrix({ bookings, handleCellClick, startDate, en
   // Handle scroll to detect edges - only trigger loading after user has scrolled
   const handleScroll = useCallback(() => {
     const container = scrollContainerRef.current;
-    if (!container || isLoadingMore) return;
+    if (!container || isLoadingMore !== false) return;
 
     const { scrollLeft, scrollWidth, clientWidth } = container;
     const scrollRight = scrollWidth - clientWidth - scrollLeft;
@@ -110,11 +110,8 @@ export default function BookingMatrix({ bookings, handleCellClick, startDate, en
     }
   }, [handleScroll]);
 
-  // Reset scroll tracking when dates change
-  useEffect(() => {
-    hasUserScrolledRef.current = false;
-    lastScrollLeftRef.current = 0;
-  }, [startDate, endDate]);
+  // Note: We don't reset scroll tracking on date changes anymore
+  // since we're expanding the range, not shifting it
   const getDatesInRange = (start: string, end: string) => {
     const dates = [];
     let currentDate = new Date(start);
@@ -132,39 +129,50 @@ export default function BookingMatrix({ bookings, handleCellClick, startDate, en
 
   return (
     <div className="bg-black/40 border border-gray-800 rounded-lg p-4 relative">
-        {/* Left edge indicator */}
-        {showLeftIndicator && (
-          <div className="absolute left-0 top-0 bottom-0 w-12 bg-gradient-to-r from-orange-500/20 to-transparent z-20 flex items-center justify-start pl-1 pointer-events-none">
-            <div className="flex flex-col items-center text-orange-400 animate-pulse">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-              <span className="text-[9px] font-medium">Prev</span>
+        {/* Left edge indicator - shows when near edge or loading */}
+        {(showLeftIndicator || isLoadingMore === 'left') && (
+          <div className="absolute left-0 top-0 bottom-0 w-16 bg-gradient-to-r from-orange-500/30 to-transparent z-20 flex items-center justify-start pl-2 pointer-events-none">
+            <div className="flex flex-col items-center text-orange-400">
+              {isLoadingMore === 'left' ? (
+                <>
+                  <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2" opacity="0.3" />
+                    <path fill="currentColor" d="M12 2a10 10 0 0 1 10 10h-2a8 8 0 0 0-8-8V2z" />
+                  </svg>
+                  <span className="text-[9px] font-medium mt-1">Loading</span>
+                </>
+              ) : (
+                <>
+                  <svg className="w-5 h-5 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                  <span className="text-[9px] font-medium">Prev</span>
+                </>
+              )}
             </div>
           </div>
         )}
 
-        {/* Right edge indicator */}
-        {showRightIndicator && (
-          <div className="absolute right-0 top-0 bottom-0 w-12 bg-gradient-to-l from-orange-500/20 to-transparent z-20 flex items-center justify-end pr-1 pointer-events-none">
-            <div className="flex flex-col items-center text-orange-400 animate-pulse">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-              <span className="text-[9px] font-medium">Next</span>
-            </div>
-          </div>
-        )}
-
-        {/* Loading indicator */}
-        {isLoadingMore && (
-          <div className="absolute inset-0 bg-black/50 z-30 flex items-center justify-center rounded-lg">
-            <div className="flex items-center gap-2 text-orange-400">
-              <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24">
-                <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2" opacity="0.3" />
-                <path fill="currentColor" d="M12 2a10 10 0 0 1 10 10h-2a8 8 0 0 0-8-8V2z" />
-              </svg>
-              <span className="text-sm">Loading...</span>
+        {/* Right edge indicator - shows when near edge or loading */}
+        {(showRightIndicator || isLoadingMore === 'right') && (
+          <div className="absolute right-0 top-0 bottom-0 w-16 bg-gradient-to-l from-orange-500/30 to-transparent z-20 flex items-center justify-end pr-2 pointer-events-none">
+            <div className="flex flex-col items-center text-orange-400">
+              {isLoadingMore === 'right' ? (
+                <>
+                  <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2" opacity="0.3" />
+                    <path fill="currentColor" d="M12 2a10 10 0 0 1 10 10h-2a8 8 0 0 0-8-8V2z" />
+                  </svg>
+                  <span className="text-[9px] font-medium mt-1">Loading</span>
+                </>
+              ) : (
+                <>
+                  <svg className="w-5 h-5 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                  <span className="text-[9px] font-medium">Next</span>
+                </>
+              )}
             </div>
           </div>
         )}

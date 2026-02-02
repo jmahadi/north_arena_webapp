@@ -44,7 +44,7 @@ type BookingsData = Record<string, Booking>;
 export default function BookingsPage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState<'left' | 'right' | false>(false);
   const [error, setError] = useState<string | null>(null);
 
   const [bookings, setBookings] = useState<BookingsData>({});
@@ -136,38 +136,79 @@ export default function BookingsPage() {
     fetchBookingsData();
   };
 
-  // Load previous week (shift date range 7 days earlier)
+  // Fetch bookings for a specific date range and merge with existing
+  const fetchAndMergeBookings = async (fetchStart: string, fetchEnd: string) => {
+    try {
+      const [bookingsResponse, transactionSummaries] = await Promise.all([
+        fetchBookings(fetchStart, fetchEnd),
+        getTransactionSummaries()
+      ]);
+
+      const newBookingsData = bookingsResponse.bookingsData || {};
+
+      // Create a lookup map for transaction status
+      const transactionStatusMap = new Map();
+      transactionSummaries.forEach(summary => {
+        transactionStatusMap.set(summary.booking_id, summary.status);
+      });
+
+      // Merge transaction status into new bookings
+      Object.keys(newBookingsData).forEach(key => {
+        const booking = newBookingsData[key];
+        if (booking.id) {
+          booking.transaction_status = transactionStatusMap.get(booking.id) || null;
+        }
+      });
+
+      return newBookingsData;
+    } catch (error) {
+      console.error('Failed to fetch bookings:', error);
+      return {};
+    }
+  };
+
+  // Load previous week (expand date range earlier) - appends to the left
   const handleLoadPreviousWeek = async () => {
     if (isLoadingMore) return;
-    setIsLoadingMore(true);
+    setIsLoadingMore('left');
 
     const newStartDate = new Date(startDate);
     newStartDate.setDate(newStartDate.getDate() - 7);
-    const newEndDate = new Date(endDate);
-    newEndDate.setDate(newEndDate.getDate() - 7);
+    const newStartStr = newStartDate.toISOString().split('T')[0];
 
-    setStartDate(newStartDate.toISOString().split('T')[0]);
-    setEndDate(newEndDate.toISOString().split('T')[0]);
+    // Fetch only the new week's data
+    const prevWeekEnd = new Date(startDate);
+    prevWeekEnd.setDate(prevWeekEnd.getDate() - 1);
+    const prevWeekEndStr = prevWeekEnd.toISOString().split('T')[0];
 
-    // isLoadingMore will be set to false after fetchBookingsData completes
-    setTimeout(() => setIsLoadingMore(false), 500);
+    const newBookings = await fetchAndMergeBookings(newStartStr, prevWeekEndStr);
+
+    // Merge with existing bookings
+    setBookings(prev => ({ ...newBookings, ...prev }));
+    setStartDate(newStartStr);
+    setIsLoadingMore(false);
   };
 
-  // Load next week (shift date range 7 days later)
+  // Load next week (expand date range later) - appends to the right
   const handleLoadNextWeek = async () => {
     if (isLoadingMore) return;
-    setIsLoadingMore(true);
+    setIsLoadingMore('right');
 
-    const newStartDate = new Date(startDate);
-    newStartDate.setDate(newStartDate.getDate() + 7);
     const newEndDate = new Date(endDate);
     newEndDate.setDate(newEndDate.getDate() + 7);
+    const newEndStr = newEndDate.toISOString().split('T')[0];
 
-    setStartDate(newStartDate.toISOString().split('T')[0]);
-    setEndDate(newEndDate.toISOString().split('T')[0]);
+    // Fetch only the new week's data
+    const nextWeekStart = new Date(endDate);
+    nextWeekStart.setDate(nextWeekStart.getDate() + 1);
+    const nextWeekStartStr = nextWeekStart.toISOString().split('T')[0];
 
-    // isLoadingMore will be set to false after fetchBookingsData completes
-    setTimeout(() => setIsLoadingMore(false), 500);
+    const newBookings = await fetchAndMergeBookings(nextWeekStartStr, newEndStr);
+
+    // Merge with existing bookings
+    setBookings(prev => ({ ...prev, ...newBookings }));
+    setEndDate(newEndStr);
+    setIsLoadingMore(false);
   };
 
   const handleCellClick = (date: string, slot: TimeSlot) => {
