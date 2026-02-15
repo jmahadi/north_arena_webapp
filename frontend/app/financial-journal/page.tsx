@@ -121,7 +121,7 @@ export default function FinancialJournalPage() {
       t.booking_date || 'N/A',
       t.time_slot || 'N/A',
       t.transaction_type,
-      t.payment_method,
+      t.payment_method || (t.transaction_type === 'DISCOUNT' ? 'Discount' : 'Other'),
       t.amount.toFixed(2),
     ]);
     const csvContent = [headers, ...csvData].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
@@ -318,8 +318,20 @@ export default function FinancialJournalPage() {
                             <div className="text-xs text-gray-500">{t.time_slot || '-'}</div>
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap">
-                            <span className={`text-xs ${t.payment_method === 'CASH' ? 'text-gray-400' : 'text-orange-400'}`}>
-                              {t.payment_method === 'BKASH' ? 'bKash' : t.payment_method}
+                            <span
+                              className={`text-xs ${
+                                t.transaction_type === 'DISCOUNT' || !t.payment_method
+                                  ? 'text-orange-300'
+                                  : t.payment_method === 'CASH'
+                                  ? 'text-gray-400'
+                                  : 'text-orange-400'
+                              }`}
+                            >
+                              {t.transaction_type === 'DISCOUNT'
+                                ? 'Discount'
+                                : t.payment_method === 'BKASH'
+                                ? 'bKash'
+                                : (t.payment_method || 'Other')}
                             </span>
                           </td>
                           <td className="px-4 py-3 text-right whitespace-nowrap">
@@ -371,8 +383,20 @@ export default function FinancialJournalPage() {
                                   </div>
                                 </div>
                                 <div className="flex items-center gap-3">
-                                  <span className={`text-xs ${t.payment_method === 'CASH' ? 'text-gray-500' : 'text-orange-400'}`}>
-                                    {t.payment_method === 'BKASH' ? 'bKash' : t.payment_method}
+                                  <span
+                                    className={`text-xs ${
+                                      t.transaction_type === 'DISCOUNT' || !t.payment_method
+                                        ? 'text-orange-300'
+                                        : t.payment_method === 'CASH'
+                                        ? 'text-gray-500'
+                                        : 'text-orange-400'
+                                    }`}
+                                  >
+                                    {t.transaction_type === 'DISCOUNT'
+                                      ? 'Discount'
+                                      : t.payment_method === 'BKASH'
+                                      ? 'bKash'
+                                      : (t.payment_method || 'Other')}
                                   </span>
                                   <span className="text-white font-medium">৳{t.amount.toLocaleString()}</span>
                                 </div>

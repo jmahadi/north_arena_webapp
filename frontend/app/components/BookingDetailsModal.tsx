@@ -42,6 +42,7 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | ''>('');
   const [amount, setAmount] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDiscountMode, setIsDiscountMode] = useState(false);
 
   // Edit mode state
   const [editingTransaction, setEditingTransaction] = useState<TransactionDetail | null>(null);
@@ -70,19 +71,22 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
   // Reset form when editing transaction changes
   useEffect(() => {
     if (editingTransaction) {
-      setTransactionType(editingTransaction.transaction_type as TransactionType);
-      setPaymentMethod(editingTransaction.payment_method as PaymentMethod);
+      const isDiscount = editingTransaction.transaction_type === 'DISCOUNT';
+      setIsDiscountMode(isDiscount);
+      setTransactionType(isDiscount ? 'DISCOUNT' : (editingTransaction.transaction_type as TransactionType));
+      setPaymentMethod((editingTransaction.payment_method as PaymentMethod) || '');
       setAmount(editingTransaction.amount.toString());
     } else {
       setTransactionType('SLOT_PAYMENT');
       setPaymentMethod('');
       setAmount('');
+      setIsDiscountMode(false);
     }
   }, [editingTransaction]);
 
   const handleSubmitTransaction = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!transactionType || !paymentMethod || !amount) {
+    if (!transactionType || (!isDiscountMode && !paymentMethod) || !amount) {
       setError('Please fill in all fields');
       return;
     }
@@ -94,14 +98,14 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
       if (editingTransaction) {
         await updateTransaction(editingTransaction.id, {
           transaction_type: transactionType as TransactionType,
-          payment_method: paymentMethod as PaymentMethod,
+          payment_method: isDiscountMode ? null : (paymentMethod as PaymentMethod),
           amount: parseFloat(amount)
         });
       } else {
         await addTransaction({
           booking_id: bookingId,
           transaction_type: transactionType as TransactionType,
-          payment_method: paymentMethod as PaymentMethod,
+          payment_method: isDiscountMode ? null : (paymentMethod as PaymentMethod),
           amount: parseFloat(amount)
         });
       }
@@ -111,6 +115,7 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
       setPaymentMethod('');
       setAmount('');
       setEditingTransaction(null);
+      setIsDiscountMode(false);
 
       if (onTransactionUpdate) {
         onTransactionUpdate();
@@ -142,6 +147,22 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
     setTransactionType('SLOT_PAYMENT');
     setPaymentMethod('');
     setAmount('');
+    setIsDiscountMode(false);
+  };
+
+  const handleToggleDiscount = () => {
+    if (isSubmitting) return;
+    const next = !isDiscountMode;
+    setIsDiscountMode(next);
+    if (next) {
+      setTransactionType('DISCOUNT');
+      setPaymentMethod('');
+    } else {
+      const fallbackType = editingTransaction && editingTransaction.transaction_type !== 'DISCOUNT'
+        ? (editingTransaction.transaction_type as TransactionType)
+        : 'SLOT_PAYMENT';
+      setTransactionType(fallbackType);
+    }
   };
 
   // Auto-fill remaining amount
@@ -232,68 +253,112 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
 
                 {/* Add Payment Form */}
                 <form onSubmit={handleSubmitTransaction} className="space-y-2">
-                  <div className="text-xs font-medium text-gray-400">
-                    {editingTransaction ? 'Edit Payment' : 'Add Payment'}
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs font-medium text-gray-400">
+                      {editingTransaction ? 'Edit Payment' : 'Add Payment'}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleToggleDiscount}
+                      disabled={isSubmitting}
+                      className={`px-2 py-0.5 text-[10px] rounded border transition-colors ${
+                        isDiscountMode
+                          ? 'bg-orange-600/20 text-orange-300 border-orange-600/40'
+                          : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-white'
+                      }`}
+                    >
+                      Discount
+                    </button>
                   </div>
                   {/* Type Selection - Button Group */}
-                  <div className="flex gap-2">
-                    <div className="flex rounded overflow-hidden border border-gray-700">
-                      {TRANSACTION_TYPES.map((type) => (
-                        <button
-                          key={type}
-                          type="button"
-                          onClick={() => setTransactionType(type)}
+                  {!isDiscountMode ? (
+                    <div className="flex gap-2">
+                      <div className="flex rounded overflow-hidden border border-gray-700">
+                        {TRANSACTION_TYPES.map((type) => (
+                          <button
+                            key={type}
+                            type="button"
+                            onClick={() => setTransactionType(type)}
+                            disabled={isSubmitting}
+                            className={`px-3 py-1.5 text-xs transition-colors ${
+                              transactionType === type
+                                ? 'bg-orange-600 text-white'
+                                : 'bg-gray-800 text-gray-400 hover:text-white'
+                            }`}
+                          >
+                            {type === 'BOOKING_PAYMENT' ? 'Booking' : 'Slot'}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="flex rounded overflow-hidden border border-gray-700">
+                        {PAYMENT_METHODS.map((method) => (
+                          <button
+                            key={method}
+                            type="button"
+                            onClick={() => setPaymentMethod(method)}
+                            disabled={isSubmitting}
+                            className={`px-3 py-1.5 text-xs transition-colors ${
+                              paymentMethod === method
+                                ? method === 'BKASH' ? 'bg-pink-600 text-white' : 'bg-green-600 text-white'
+                                : 'bg-gray-800 text-gray-400 hover:text-white'
+                            }`}
+                          >
+                            {method === 'BKASH' ? 'bKash' : 'Cash'}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="relative flex-1">
+                        <input
+                          type="number"
+                          value={amount}
+                          onChange={(e) => setAmount(e.target.value)}
+                          placeholder="Amount"
+                          className="w-full px-2 py-1.5 text-sm rounded bg-gray-800 border border-gray-700 text-white focus:border-orange-500 focus:outline-none"
+                          required
+                          min="0"
+                          step="1"
                           disabled={isSubmitting}
-                          className={`px-3 py-1.5 text-xs transition-colors ${
-                            transactionType === type
-                              ? 'bg-orange-600 text-white'
-                              : 'bg-gray-800 text-gray-400 hover:text-white'
-                          }`}
-                        >
-                          {type === 'BOOKING_PAYMENT' ? 'Booking' : 'Slot'}
-                        </button>
-                      ))}
+                        />
+                        {paymentSummary.summary.leftover > 0 && !amount && (
+                          <button
+                            type="button"
+                            onClick={handleAutoFillAmount}
+                            className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-orange-400 hover:text-orange-300 bg-gray-800 px-1"
+                          >
+                            ৳{paymentSummary.summary.leftover}
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex rounded overflow-hidden border border-gray-700">
-                      {PAYMENT_METHODS.map((method) => (
-                        <button
-                          key={method}
-                          type="button"
-                          onClick={() => setPaymentMethod(method)}
+                  ) : (
+                    <div className="flex gap-2">
+                      <div className="px-3 py-1.5 text-xs rounded border border-orange-600/40 bg-orange-600/10 text-orange-300">
+                        Discount
+                      </div>
+                      <div className="relative flex-1">
+                        <input
+                          type="number"
+                          value={amount}
+                          onChange={(e) => setAmount(e.target.value)}
+                          placeholder="Discount amount"
+                          className="w-full px-2 py-1.5 text-sm rounded bg-gray-800 border border-gray-700 text-white focus:border-orange-500 focus:outline-none"
+                          required
+                          min="0"
+                          step="1"
                           disabled={isSubmitting}
-                          className={`px-3 py-1.5 text-xs transition-colors ${
-                            paymentMethod === method
-                              ? method === 'BKASH' ? 'bg-pink-600 text-white' : 'bg-green-600 text-white'
-                              : 'bg-gray-800 text-gray-400 hover:text-white'
-                          }`}
-                        >
-                          {method === 'BKASH' ? 'bKash' : 'Cash'}
-                        </button>
-                      ))}
+                        />
+                        {paymentSummary.summary.leftover > 0 && !amount && (
+                          <button
+                            type="button"
+                            onClick={handleAutoFillAmount}
+                            className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-orange-400 hover:text-orange-300 bg-gray-800 px-1"
+                          >
+                            ৳{paymentSummary.summary.leftover}
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <div className="relative flex-1">
-                      <input
-                        type="number"
-                        value={amount}
-                        onChange={(e) => setAmount(e.target.value)}
-                        placeholder="Amount"
-                        className="w-full px-2 py-1.5 text-sm rounded bg-gray-800 border border-gray-700 text-white focus:border-orange-500 focus:outline-none"
-                        required
-                        min="0"
-                        step="1"
-                        disabled={isSubmitting}
-                      />
-                      {paymentSummary.summary.leftover > 0 && !amount && (
-                        <button
-                          type="button"
-                          onClick={handleAutoFillAmount}
-                          className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-orange-400 hover:text-orange-300 bg-gray-800 px-1"
-                        >
-                          ৳{paymentSummary.summary.leftover}
-                        </button>
-                      )}
-                    </div>
-                  </div>
+                  )}
                   <div className="flex gap-2">
                     {editingTransaction && (
                       <>
@@ -332,33 +397,60 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
                     <p className="text-gray-500 text-xs text-center py-4">No payments yet</p>
                   ) : (
                     <div className="space-y-1.5">
-                      {paymentSummary.transactions.map((transaction) => (
-                        <div
-                          key={transaction.id}
-                          onClick={() => setEditingTransaction(transaction)}
-                          className={`flex items-center justify-between p-2 rounded cursor-pointer transition-colors ${
-                            editingTransaction?.id === transaction.id
-                              ? 'bg-orange-600/10 border border-orange-600/30'
-                              : 'bg-gray-800/50 border border-gray-800 hover:border-gray-700'
-                          }`}
-                        >
-                          <div>
-                            <div className="flex items-center gap-1.5">
-                              <span className={`text-xs font-medium ${transaction.payment_method === 'CASH' ? 'text-gray-300' : 'text-pink-400'}`}>
-                                {transaction.payment_method === 'BKASH' ? 'bKash' : 'Cash'}
-                              </span>
-                              <span className="text-[10px] text-gray-600">·</span>
-                              <span className="text-[10px] text-gray-500">
-                                {transaction.transaction_type === 'BOOKING_PAYMENT' ? 'Booking' : 'Slot'}
-                              </span>
+                      {paymentSummary.transactions.map((transaction) => {
+                        const isDiscount = transaction.transaction_type === 'DISCOUNT';
+                        const isAdjustment = transaction.transaction_type === 'OTHER_ADJUSTMENT';
+                        const paymentLabel = isDiscount
+                          ? 'Discount'
+                          : transaction.payment_method === 'BKASH'
+                          ? 'bKash'
+                          : transaction.payment_method === 'CASH'
+                          ? 'Cash'
+                          : (transaction.payment_method || 'Other');
+                        const typeLabel = isDiscount
+                          ? 'Discount'
+                          : isAdjustment
+                          ? 'Adjustment'
+                          : transaction.transaction_type === 'BOOKING_PAYMENT'
+                          ? 'Booking'
+                          : 'Slot';
+
+                        return (
+                          <div
+                            key={transaction.id}
+                            onClick={() => setEditingTransaction(transaction)}
+                            className={`flex items-center justify-between p-2 rounded cursor-pointer transition-colors ${
+                              editingTransaction?.id === transaction.id
+                                ? 'bg-orange-600/10 border border-orange-600/30'
+                                : 'bg-gray-800/50 border border-gray-800 hover:border-gray-700'
+                            }`}
+                          >
+                            <div>
+                              <div className="flex items-center gap-1.5">
+                                <span
+                                  className={`text-xs font-medium ${
+                                    isDiscount || isAdjustment || !transaction.payment_method
+                                      ? 'text-orange-300'
+                                      : transaction.payment_method === 'CASH'
+                                      ? 'text-gray-300'
+                                      : 'text-pink-400'
+                                  }`}
+                                >
+                                  {paymentLabel}
+                                </span>
+                                <span className="text-[10px] text-gray-600">·</span>
+                                <span className="text-[10px] text-gray-500">
+                                  {typeLabel}
+                                </span>
+                              </div>
+                              <div className="text-[10px] text-gray-500 mt-0.5">
+                                {format(new Date(transaction.created_at), 'MMM dd, HH:mm')}
+                              </div>
                             </div>
-                            <div className="text-[10px] text-gray-500 mt-0.5">
-                              {format(new Date(transaction.created_at), 'MMM dd, HH:mm')}
-                            </div>
+                            <div className="text-sm text-white font-medium">৳{transaction.amount.toLocaleString()}</div>
                           </div>
-                          <div className="text-sm text-white font-medium">৳{transaction.amount.toLocaleString()}</div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>

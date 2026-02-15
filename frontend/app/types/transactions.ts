@@ -32,7 +32,7 @@ export interface ApiResponse<T = any> {
 export interface TransactionData {
   booking_id: number;
   transaction_type: TransactionType;
-  payment_method: PaymentMethod;
+  payment_method: PaymentMethod | null;
   amount: number;
   created_at?: string; // Optional for frontend, handled by backend
 }
@@ -42,7 +42,7 @@ export interface TransactionDetail {
   id: number;
   booking_id: number;
   transaction_type: string; // Using string for flexibility with enum
-  payment_method: string;   // Using string for flexibility with enum
+  payment_method: string | null;   // Using string for flexibility with enum
   amount: number;
   created_by: string;
   created_at: string;
@@ -57,7 +57,7 @@ export interface Transaction {
   booking_date: string;
   time_slot: string;
   transaction_type: string;
-  payment_method: string;
+  payment_method: string | null;
   amount: number;
   creator: string;
   created_at: string;

@@ -11,7 +11,7 @@ import {
 interface TransactionData {
   booking_id: number;
   transaction_type: TransactionType;
-  payment_method: PaymentMethod;
+  payment_method: PaymentMethod | null;
   amount: number;
   // This field is handled by the backend, not required in UI
   created_at?: string;
@@ -133,8 +133,12 @@ export const updateTransaction = async (
     }
     
     // FIXED: Properly check and convert payment method
-    if (data.payment_method) {
-      formData.append('payment_method', data.payment_method.toString());
+    if (data.payment_method !== undefined) {
+      if (data.payment_method === null) {
+        formData.append('payment_method', '');
+      } else {
+        formData.append('payment_method', data.payment_method.toString());
+      }
     }
     
     // FIXED: Check for undefined instead of falsy (0 is falsy but valid)
@@ -180,7 +184,9 @@ export const addTransaction = async (data: TransactionData): Promise<ApiResponse
     const formData = new FormData();
     formData.append('booking_id', data.booking_id.toString());
     formData.append('transaction_type', data.transaction_type.toString());
-    formData.append('payment_method', data.payment_method.toString());
+    if (data.payment_method !== null) {
+      formData.append('payment_method', data.payment_method.toString());
+    }
     formData.append('amount', data.amount.toString());
     // Add current timestamp in the required format
     const now = new Date();
@@ -223,7 +229,7 @@ export interface FinancialJournalTransaction {
   booking_type: string | null;
   is_cancelled: boolean;
   transaction_type: string;
-  payment_method: string;
+  payment_method: string | null;
   amount: number;
   created_by: string;
   updated_by: string | null;

@@ -253,6 +253,7 @@ async def dashboard(current_user: User = Depends(get_current_user), db: AsyncSes
         last_month_start = (first_day_of_month - timedelta(days=1)).replace(day=1)
         seven_days_ago = today - timedelta(days=7)
         thirty_days_ago = today - timedelta(days=30)
+        payment_types = [TransactionType.BOOKING_PAYMENT, TransactionType.SLOT_PAYMENT]
 
         # Basic metrics
         bookings_this_month = await db.execute(
@@ -268,13 +269,20 @@ async def dashboard(current_user: User = Depends(get_current_user), db: AsyncSes
         # Revenue metrics
         revenue_this_month = await db.execute(
             select(func.sum(Transaction.amount))
-            .filter(Transaction.created_at >= first_day_of_month)
+            .filter(
+                Transaction.created_at >= first_day_of_month,
+                Transaction.transaction_type.in_(payment_types)
+            )
         )
         revenue_this_month = revenue_this_month.scalar_one() or 0
 
         revenue_last_month = await db.execute(
             select(func.sum(Transaction.amount))
-            .filter(Transaction.created_at >= last_month_start, Transaction.created_at < first_day_of_month)
+            .filter(
+                Transaction.created_at >= last_month_start,
+                Transaction.created_at < first_day_of_month,
+                Transaction.transaction_type.in_(payment_types)
+            )
         )
         revenue_last_month = revenue_last_month.scalar_one() or 0
 
@@ -284,7 +292,10 @@ async def dashboard(current_user: User = Depends(get_current_user), db: AsyncSes
         total_bookings = await db.execute(select(func.count(Booking.id)))
         total_bookings = total_bookings.scalar_one()
 
-        total_revenue = await db.execute(select(func.sum(Transaction.amount)))
+        total_revenue = await db.execute(
+            select(func.sum(Transaction.amount))
+            .filter(Transaction.transaction_type.in_(payment_types))
+        )
         total_revenue = total_revenue.scalar_one() or 0
 
         bookings_last_week = await db.execute(
@@ -294,7 +305,10 @@ async def dashboard(current_user: User = Depends(get_current_user), db: AsyncSes
 
         revenue_last_30_days = await db.execute(
             select(func.sum(Transaction.amount))
-            .filter(Transaction.created_at >= thirty_days_ago)
+            .filter(
+                Transaction.created_at >= thirty_days_ago,
+                Transaction.transaction_type.in_(payment_types)
+            )
         )
         revenue_last_30_days = revenue_last_30_days.scalar_one() or 0
 
@@ -317,10 +331,17 @@ async def dashboard(current_user: User = Depends(get_current_user), db: AsyncSes
         # Revenue by payment method (last 30 days)
         payment_breakdown = await db.execute(
             select(Transaction.payment_method, func.sum(Transaction.amount))
-            .filter(Transaction.created_at >= thirty_days_ago)
+            .filter(
+                Transaction.created_at >= thirty_days_ago,
+                Transaction.transaction_type.in_(payment_types)
+            )
             .group_by(Transaction.payment_method)
         )
-        payment_data = [{"method": row[0].value, "amount": float(row[1])} for row in payment_breakdown]
+        payment_data = [
+            {"method": row[0].value, "amount": float(row[1])}
+            for row in payment_breakdown
+            if row[0] is not None
+        ]
 
         # Daily revenue for last 30 days (OPTIMIZED: single query with GROUP BY)
         daily_revenue_result = await db.execute(
@@ -328,7 +349,10 @@ async def dashboard(current_user: User = Depends(get_current_user), db: AsyncSes
                 func.date(Transaction.created_at).label('date'),
                 func.sum(Transaction.amount).label('revenue')
             )
-            .filter(Transaction.created_at >= thirty_days_ago)
+            .filter(
+                Transaction.created_at >= thirty_days_ago,
+                Transaction.transaction_type.in_(payment_types)
+            )
             .group_by(func.date(Transaction.created_at))
         )
         daily_revenue_map = {str(row[0]): float(row[1]) for row in daily_revenue_result}
@@ -1492,7 +1516,7 @@ async def get_transactions(
                 "booking_date": t.booking.booking_date.isoformat(),
                 "time_slot": t.booking.time_slot,
                 "transaction_type": t.transaction_type.value,
-                "payment_method": t.payment_method.value,
+                "payment_method": t.payment_method.value if t.payment_method else None,
                 "amount": t.amount,
                 "creator": t.creator.username,
                 "created_at": t.created_at.isoformat()
@@ -1575,7 +1599,7 @@ async def get_transaction_details(
                 "id": t.id,
                 "booking_id": t.booking_id,
                 "transaction_type": t.transaction_type.value,
-                "payment_method": t.payment_method.value,
+                "payment_method": t.payment_method.value if t.payment_method else None,
                 "amount": t.amount,
                 "created_by": t.creator.username,
                 "created_at": t.created_at.isoformat(),
@@ -1596,7 +1620,7 @@ async def get_transaction_details(
 async def add_transaction(
     booking_id: int = Form(...),
     transaction_type: str = Form(...),
-    payment_method: str = Form(...),
+    payment_method: str = Form(None),
     amount: float = Form(...),
     created_at: str = Form(...), 
     current_user: User = Depends(get_current_user),
@@ -1639,14 +1663,37 @@ async def add_transaction(
         # Use the first (most specific) slot price
         slot_price = slot_prices[0]
 
+        try:
+            transaction_type_enum = TransactionType[transaction_type]
+        except (KeyError, ValueError):
+            return JSONResponse(status_code=400, content={
+                "success": False,
+                "message": f"Invalid transaction type: {transaction_type}"
+            })
+
+        payment_method_enum = None
+        if payment_method:
+            try:
+                payment_method_enum = PaymentMethod[payment_method]
+            except (KeyError, ValueError):
+                return JSONResponse(status_code=400, content={
+                    "success": False,
+                    "message": f"Invalid payment method: {payment_method}"
+                })
+        elif transaction_type_enum not in [TransactionType.DISCOUNT, TransactionType.OTHER_ADJUSTMENT]:
+            return JSONResponse(status_code=400, content={
+                "success": False,
+                "message": "Payment method is required for this transaction type"
+            })
+
         transaction = Transaction(
             booking_id=booking_id,
-            transaction_type=TransactionType[transaction_type],
-            payment_method=PaymentMethod[payment_method],
+            transaction_type=transaction_type_enum,
+            payment_method=payment_method_enum,
             amount=amount,
             created_by=current_user.id,
             created_at=created_at
-            )
+        )
         db.add(transaction)
         await db.flush()
 
@@ -1661,7 +1708,9 @@ async def add_transaction(
         transactions = transactions.scalars().all()
 
         summary.total_paid = sum(t.amount for t in transactions if t.transaction_type in [TransactionType.BOOKING_PAYMENT, TransactionType.SLOT_PAYMENT])
-        summary.leftover = summary.total_price - summary.total_paid
+        summary.discount = sum(t.amount for t in transactions if t.transaction_type == TransactionType.DISCOUNT)
+        summary.other_adjustments = sum(t.amount for t in transactions if t.transaction_type == TransactionType.OTHER_ADJUSTMENT)
+        summary.leftover = summary.total_price - summary.total_paid - summary.discount - summary.other_adjustments
         summary.booking_payment = sum(t.amount for t in transactions if t.transaction_type == TransactionType.BOOKING_PAYMENT)
         summary.slot_payment = sum(t.amount for t in transactions if t.transaction_type == TransactionType.SLOT_PAYMENT)
         summary.cash_payment = sum(t.amount for t in transactions if t.payment_method == PaymentMethod.CASH)
@@ -1670,7 +1719,7 @@ async def add_transaction(
         if not summary.booking_payment_date and transaction.transaction_type == TransactionType.BOOKING_PAYMENT:
             summary.booking_payment_date = transaction.created_at.date()
 
-        if summary.leftover == 0:
+        if summary.leftover <= 0:
             summary.status = TransactionStatus.SUCCESSFUL
         elif summary.total_paid > 0:
             summary.status = TransactionStatus.PARTIAL
@@ -1727,9 +1776,11 @@ async def update_transaction(
         booking_id = transaction.booking_id
 
         # Update fields if provided
+        new_transaction_type = None
         if transaction_type:
             try:
-                transaction.transaction_type = TransactionType[transaction_type]
+                new_transaction_type = TransactionType[transaction_type]
+                transaction.transaction_type = new_transaction_type
                 logging.info(f"Updated transaction type to {transaction_type}")
             except (KeyError, ValueError) as e:
                 logging.error(f"Invalid transaction type: {transaction_type}")
@@ -1738,17 +1789,30 @@ async def update_transaction(
                     "message": f"Invalid transaction type: {transaction_type}"
                 })
                 
-        if payment_method:
-            try:
-                transaction.payment_method = PaymentMethod[payment_method]
-                logging.info(f"Updated payment method to {payment_method}")
-            except (KeyError, ValueError) as e:
-                logging.error(f"Invalid payment method: {payment_method}")
-                return JSONResponse(status_code=400, content={
-                    "success": False,
-                    "message": f"Invalid payment method: {payment_method}"
-                })
-                
+        if payment_method is not None:
+            if payment_method == "" or payment_method.upper() == "NONE":
+                effective_type = new_transaction_type or transaction.transaction_type
+                if effective_type in [TransactionType.DISCOUNT, TransactionType.OTHER_ADJUSTMENT]:
+                    transaction.payment_method = None
+                    logging.info("Cleared payment method")
+                else:
+                    return JSONResponse(status_code=400, content={
+                        "success": False,
+                        "message": "Payment method is required for this transaction type"
+                    })
+            else:
+                try:
+                    transaction.payment_method = PaymentMethod[payment_method]
+                    logging.info(f"Updated payment method to {payment_method}")
+                except (KeyError, ValueError) as e:
+                    logging.error(f"Invalid payment method: {payment_method}")
+                    return JSONResponse(status_code=400, content={
+                        "success": False,
+                        "message": f"Invalid payment method: {payment_method}"
+                    })
+        elif new_transaction_type in [TransactionType.DISCOUNT, TransactionType.OTHER_ADJUSTMENT]:
+            transaction.payment_method = None
+
         if amount is not None:
             transaction.amount = amount
             logging.info(f"Updated amount to {amount}")
@@ -1772,7 +1836,9 @@ async def update_transaction(
             
             # Recalculate summary fields
             summary.total_paid = sum(t.amount for t in transactions if t.transaction_type in [TransactionType.BOOKING_PAYMENT, TransactionType.SLOT_PAYMENT])
-            summary.leftover = summary.total_price - summary.total_paid
+            summary.discount = sum(t.amount for t in transactions if t.transaction_type == TransactionType.DISCOUNT)
+            summary.other_adjustments = sum(t.amount for t in transactions if t.transaction_type == TransactionType.OTHER_ADJUSTMENT)
+            summary.leftover = summary.total_price - summary.total_paid - summary.discount - summary.other_adjustments
             summary.booking_payment = sum(t.amount for t in transactions if t.transaction_type == TransactionType.BOOKING_PAYMENT)
             summary.slot_payment = sum(t.amount for t in transactions if t.transaction_type == TransactionType.SLOT_PAYMENT)
             summary.cash_payment = sum(t.amount for t in transactions if t.payment_method == PaymentMethod.CASH)
@@ -1813,7 +1879,7 @@ async def update_transaction(
                 "id": updated_transaction.id,
                 "booking_id": updated_transaction.booking_id,
                 "transaction_type": updated_transaction.transaction_type.value,
-                "payment_method": updated_transaction.payment_method.value,
+                "payment_method": updated_transaction.payment_method.value if updated_transaction.payment_method else None,
                 "amount": updated_transaction.amount,
                 "created_by": updated_transaction.creator.username if updated_transaction.creator else "Unknown",
                 "created_at": updated_transaction.created_at.isoformat(),
@@ -1891,7 +1957,9 @@ async def delete_transaction(
 
             # Otherwise, recalculate summary fields
             summary.total_paid = sum(t.amount for t in transactions if t.transaction_type in [TransactionType.BOOKING_PAYMENT, TransactionType.SLOT_PAYMENT])
-            summary.leftover = summary.total_price - summary.total_paid
+            summary.discount = sum(t.amount for t in transactions if t.transaction_type == TransactionType.DISCOUNT)
+            summary.other_adjustments = sum(t.amount for t in transactions if t.transaction_type == TransactionType.OTHER_ADJUSTMENT)
+            summary.leftover = summary.total_price - summary.total_paid - summary.discount - summary.other_adjustments
             summary.booking_payment = sum(t.amount for t in transactions if t.transaction_type == TransactionType.BOOKING_PAYMENT)
             summary.slot_payment = sum(t.amount for t in transactions if t.transaction_type == TransactionType.SLOT_PAYMENT)
             summary.cash_payment = sum(t.amount for t in transactions if t.payment_method == PaymentMethod.CASH)
@@ -2011,7 +2079,7 @@ async def get_financial_journal(
                 }
 
             # Only count positive amounts towards totals (not discounts/adjustments)
-            if t.transaction_type in [TransactionType.BOOKING_PAYMENT, TransactionType.SLOT_PAYMENT]:
+            if t.transaction_type in [TransactionType.BOOKING_PAYMENT, TransactionType.SLOT_PAYMENT] and t.payment_method:
                 daily_totals[transaction_date][t.payment_method.name] += t.amount
 
             transactions_data.append({
@@ -2025,7 +2093,7 @@ async def get_financial_journal(
                 "booking_type": booking.booking_type.value if booking else None,
                 "is_cancelled": is_cancelled,
                 "transaction_type": t.transaction_type.value,
-                "payment_method": t.payment_method.value,
+                "payment_method": t.payment_method.value if t.payment_method else None,
                 "amount": t.amount,
                 "created_by": t.creator.username if t.creator else "Unknown",
                 "updated_by": t.updater.username if t.updater else None,
@@ -2137,7 +2205,7 @@ async def get_booking_payment_summary(
         transactions_data = [{
             "id": t.id,
             "transaction_type": t.transaction_type.value,
-            "payment_method": t.payment_method.value,
+            "payment_method": t.payment_method.value if t.payment_method else None,
             "amount": t.amount,
             "created_by": t.creator.username if t.creator else "Unknown",
             "created_at": t.created_at.isoformat(),

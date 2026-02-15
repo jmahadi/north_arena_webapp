@@ -334,9 +334,10 @@ const TransactionSummaryTable: React.FC<TransactionSummaryTableProps> = ({
                       transaction.payment_method === 'BKASH' ? 'bg-pink-500 text-white' :
                       transaction.payment_method === 'NAGAD' ? 'bg-orange-500 text-white' :
                       transaction.payment_method === 'CARD' ? 'bg-blue-500 text-white' :
-                      'bg-purple-500 text-white'
+                      transaction.transaction_type === 'DISCOUNT' ? 'bg-yellow-500 text-white' :
+                      'bg-gray-600 text-white'
                     }`}>
-                      {transaction.payment_method}
+                      {transaction.payment_method || (transaction.transaction_type === 'DISCOUNT' ? 'Discount' : 'Other')}
                     </span>
                   </div>
                 </div>

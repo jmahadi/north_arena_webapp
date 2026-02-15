@@ -13,7 +13,7 @@ interface TransactionFormProps {
     booking_id?: number;
     transaction_id?: number;
     transaction_type: TransactionType;
-    payment_method: PaymentMethod;
+    payment_method: PaymentMethod | null;
     amount: number;
   }) => void;
   // Added onDelete handler
@@ -38,13 +38,20 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   const [amount, setAmount] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isLoadingBookings, setIsLoadingBookings] = useState(false);
+  const isNoMethodType = transactionType === 'DISCOUNT' || transactionType === 'OTHER_ADJUSTMENT';
+
+  useEffect(() => {
+    if (isNoMethodType) {
+      setPaymentMethod('');
+    }
+  }, [isNoMethodType]);
 
   // Set form values when in edit mode or with prefilled booking
   useEffect(() => {
     if (editingTransaction) {
       // When in edit mode, we don't need to select a booking as it's already associated
       setTransactionType(editingTransaction.transaction_type as TransactionType);
-      setPaymentMethod(editingTransaction.payment_method as PaymentMethod);
+      setPaymentMethod((editingTransaction.payment_method as PaymentMethod) || '');
       setAmount(editingTransaction.amount.toString());
     } else {
       // Reset form when not in edit mode
@@ -102,7 +109,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
       // Different validation and data preparation based on add/edit mode
       if (editingTransaction) {
         // Edit mode - just need the transaction fields
-        if (!transactionType || !paymentMethod || !amount) {
+        if (!transactionType || (!isNoMethodType && !paymentMethod) || !amount) {
           setError('Please fill in all fields');
           return;
         }
@@ -110,12 +117,12 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
         await onSubmit({
           transaction_id: editingTransaction.id,
           transaction_type: transactionType as TransactionType,
-          payment_method: paymentMethod as PaymentMethod,
+          payment_method: isNoMethodType ? null : (paymentMethod as PaymentMethod),
           amount: parseFloat(amount)
         });
       } else {
         // Add mode - need booking selection as well
-        if (!selectedBooking || !transactionType || !paymentMethod || !amount) {
+        if (!selectedBooking || !transactionType || (!isNoMethodType && !paymentMethod) || !amount) {
           setError('Please fill in all fields');
           return;
         }
@@ -123,7 +130,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
         await onSubmit({
           booking_id: parseInt(selectedBooking),
           transaction_type: transactionType as TransactionType,
-          payment_method: paymentMethod as PaymentMethod,
+          payment_method: isNoMethodType ? null : (paymentMethod as PaymentMethod),
           amount: parseFloat(amount)
         });
       }
@@ -233,8 +240,8 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
             value={paymentMethod}
             onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
             className="w-full p-2 rounded-md bg-gray-700 border-gray-600 text-white focus:ring-2 focus:ring-primary"
-            required
-            disabled={isLoading}
+            required={!isNoMethodType}
+            disabled={isLoading || isNoMethodType}
           >
             <option value="">Select method</option>
             {Object.values(PaymentMethod).map((method) => (

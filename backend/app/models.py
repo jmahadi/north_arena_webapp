@@ -90,7 +90,7 @@ class Transaction(Base):
     id = Column(Integer, primary_key=True, index=True)
     booking_id = Column(Integer, ForeignKey('bookings.id'), nullable=False)
     transaction_type = Column(Enum(TransactionType), nullable=False)
-    payment_method = Column(Enum(PaymentMethod), nullable=False)
+    payment_method = Column(Enum(PaymentMethod), nullable=True)
     amount = Column(Float, nullable=False)
     created_by = Column(Integer, ForeignKey('users.id'), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
