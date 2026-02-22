@@ -278,11 +278,21 @@ export default function SlotPricesPage() {
           });
         });
 
-        await Promise.all(promises);
-        showMessage('success', 'Bulk price update completed!');
-        setBulkPrice('');
-        setBulkStartDate('');
-        setBulkEndDate('');
+        const results = await Promise.allSettled(promises);
+        const failures = results.filter(r => r.status === 'rejected') as PromiseRejectedResult[];
+        const successCount = results.length - failures.length;
+
+        if (failures.length === 0) {
+          showMessage('success', 'Bulk price update completed!');
+          setBulkPrice('');
+          setBulkStartDate('');
+          setBulkEndDate('');
+        } else {
+          const firstError: any = failures[0].reason;
+          const errorMessage = firstError?.response?.data?.message || firstError?.message || 'Error during bulk update';
+          showMessage('error', `Bulk update: ${successCount} succeeded, ${failures.length} failed. ${errorMessage}`);
+        }
+
         await Promise.all([
           fetchSlotPrices(),
           fetchAvailableTimeSlots()
@@ -345,14 +355,42 @@ export default function SlotPricesPage() {
     const daySlots = getDaySlots(availableTimeSlots);
     const nightSlots = getNightSlots(availableTimeSlots);
     
+    const today = new Date();
+
+    const pickEffectivePrice = (prices: SlotPrice[]) => {
+      if (prices.length === 0) return null;
+
+      const activePrices = prices.filter(sp => {
+        if (!sp.start_date || !sp.end_date) return false;
+        const start = new Date(sp.start_date);
+        const end = new Date(sp.end_date);
+        return today >= start && today <= end;
+      });
+      if (activePrices.length > 0) {
+        // Prefer the most recent active range
+        return activePrices.sort((a, b) => (a.start_date || '').localeCompare(b.start_date || '')).pop() || activePrices[0];
+      }
+
+      const defaultPrices = prices.filter(sp => sp.is_default);
+      if (defaultPrices.length > 0) {
+        return defaultPrices[0];
+      }
+
+      return prices[0];
+    };
+
     // Group by day type (weekday/weekend) then by individual days
     const dayTypes = { weekday: weekdays, weekend: weekends };
     
     Object.entries(dayTypes).forEach(([dayType, days]) => {
       grouped[dayType] = {};
       days.forEach(day => {
-        const dayPrices = slotPrices.filter(sp => sp.day_of_week === day && daySlots.includes(sp.time_slot));
-        const nightPrices = slotPrices.filter(sp => sp.day_of_week === day && nightSlots.includes(sp.time_slot));
+        const dayPrices = daySlots
+          .map(slot => pickEffectivePrice(slotPrices.filter(sp => sp.day_of_week === day && sp.time_slot === slot)))
+          .filter(Boolean) as SlotPrice[];
+        const nightPrices = nightSlots
+          .map(slot => pickEffectivePrice(slotPrices.filter(sp => sp.day_of_week === day && sp.time_slot === slot)))
+          .filter(Boolean) as SlotPrice[];
         
         console.log(`${day} - Day prices (${daySlots.length} slots):`, dayPrices);
         console.log(`${day} - Night prices (${nightSlots.length} slots):`, nightPrices);
