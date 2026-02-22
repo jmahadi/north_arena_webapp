@@ -287,8 +287,9 @@ export default function SlotPricesPage() {
           fetchSlotPrices(),
           fetchAvailableTimeSlots()
         ]); // Refresh data
-      } catch (error) {
-        showMessage('error', 'Error during bulk update');
+      } catch (error: any) {
+        console.error('Bulk update error:', error);
+        showMessage('error', error.response?.data?.message || 'Error during bulk update');
       }
     }
   };

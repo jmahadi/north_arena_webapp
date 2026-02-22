@@ -1398,11 +1398,27 @@ async def add_update_slot_price(
     db: AsyncSession = Depends(get_db)
 ):
     try:
+        # Normalize day_of_week to enum (accept name or value)
+        try:
+            day_key = day_of_week.strip().upper()
+            if day_key in DayOfWeek.__members__:
+                day_enum = DayOfWeek[day_key]
+            else:
+                day_enum = next(
+                    d for d in DayOfWeek
+                    if d.value.lower() == day_of_week.strip().lower()
+                )
+        except Exception:
+            return JSONResponse(status_code=400, content={
+                "success": False,
+                "message": f"Invalid day_of_week: {day_of_week}"
+            })
+
         # Check if a slot price already exists for this time slot and day of week
         existing_slot_price = await db.execute(
             select(SlotPrice).filter(
                 SlotPrice.time_slot == time_slot,
-                SlotPrice.day_of_week == DayOfWeek[day_of_week]
+                SlotPrice.day_of_week == day_enum
             )
         )
         existing_slot_price = existing_slot_price.scalar_one_or_none()
@@ -1417,7 +1433,7 @@ async def add_update_slot_price(
             # Create new slot price
             new_slot_price = SlotPrice(
                 time_slot=time_slot,
-                day_of_week=DayOfWeek[day_of_week],
+                day_of_week=day_enum,
                 price=price,
                 start_date=datetime.strptime(start_date, "%Y-%m-%d").date() if start_date else None,
                 end_date=datetime.strptime(end_date, "%Y-%m-%d").date() if end_date else None,
