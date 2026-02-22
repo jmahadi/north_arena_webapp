@@ -1414,20 +1414,42 @@ async def add_update_slot_price(
                 "message": f"Invalid day_of_week: {day_of_week}"
             })
 
-        # Check if a slot price already exists for this time slot and day of week
-        existing_slot_price = await db.execute(
-            select(SlotPrice).filter(
+        start_date_obj = datetime.strptime(start_date, "%Y-%m-%d").date() if start_date else None
+        end_date_obj = datetime.strptime(end_date, "%Y-%m-%d").date() if end_date else None
+
+        # Fetch all matching rows (there can be multiple due to temporary pricing)
+        existing_slot_prices_result = await db.execute(
+            select(SlotPrice)
+            .filter(
                 SlotPrice.time_slot == time_slot,
                 SlotPrice.day_of_week == day_enum
             )
         )
-        existing_slot_price = existing_slot_price.scalar_one_or_none()
+        existing_slot_prices = existing_slot_prices_result.scalars().all()
+
+        # Pick the most appropriate row to update
+        existing_slot_price = None
+        if is_default:
+            # Prefer a default row with no date range
+            for sp in existing_slot_prices:
+                if sp.is_default and sp.start_date is None and sp.end_date is None:
+                    existing_slot_price = sp
+                    break
+            # If no clean default exists, fall back to any default row
+            if not existing_slot_price:
+                existing_slot_price = next((sp for sp in existing_slot_prices if sp.is_default), None)
+        else:
+            # Temporary pricing should match the same date range
+            for sp in existing_slot_prices:
+                if sp.start_date == start_date_obj and sp.end_date == end_date_obj and not sp.is_default:
+                    existing_slot_price = sp
+                    break
 
         if existing_slot_price:
             # Update existing slot price
             existing_slot_price.price = price
-            existing_slot_price.start_date = datetime.strptime(start_date, "%Y-%m-%d").date() if start_date else None
-            existing_slot_price.end_date = datetime.strptime(end_date, "%Y-%m-%d").date() if end_date else None
+            existing_slot_price.start_date = start_date_obj
+            existing_slot_price.end_date = end_date_obj
             existing_slot_price.is_default = is_default
         else:
             # Create new slot price
@@ -1435,8 +1457,8 @@ async def add_update_slot_price(
                 time_slot=time_slot,
                 day_of_week=day_enum,
                 price=price,
-                start_date=datetime.strptime(start_date, "%Y-%m-%d").date() if start_date else None,
-                end_date=datetime.strptime(end_date, "%Y-%m-%d").date() if end_date else None,
+                start_date=start_date_obj,
+                end_date=end_date_obj,
                 is_default=is_default
             )
             db.add(new_slot_price)
