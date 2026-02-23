@@ -16,6 +16,18 @@ interface SlotPrice {
   is_default: boolean;
 }
 
+interface CurrentSlotPrice {
+  time_slot: string;
+  day_of_week: string;
+  price: number | null;
+  source: 'NONE' | 'DEFAULT' | 'ACTIVE_TEMPORARY' | 'FALLBACK';
+  entry_id: number | null;
+  is_default: boolean | null;
+  start_date: string | null;
+  end_date: string | null;
+  candidate_count: number;
+}
+
 interface SlotPriceForm {
   time_slot: string;
   day_of_week: string;
@@ -61,8 +73,7 @@ const getDynamicTimeRangeLabel = (timeSlots: string[], type: 'day' | 'night') =>
   const endTime = slots[slots.length - 1]?.split(' - ')[1];
   return `${startTime} - ${endTime}`;
 };
-const weekdays = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY'];
-const weekends = ['SATURDAY', 'SUNDAY'];
+const dayOrder = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
 
 const daysOfWeek = [
   { value: 'SUNDAY', label: 'Sunday' },
@@ -81,10 +92,14 @@ export default function SlotPricesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [message, setMessage] = useState<{ type: 'success' | 'error' | null; text: string }>({ type: null, text: '' });
   const [bulkPrice, setBulkPrice] = useState<string>('');
-  const [bulkPriceType, setBulkPriceType] = useState<'weekday-day' | 'weekday-night' | 'weekend-day' | 'weekend-night'>('weekday-day');
+  const [bulkSelectedDays, setBulkSelectedDays] = useState<string[]>(['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY']);
+  const [bulkSession, setBulkSession] = useState<'day' | 'night'>('day');
   const [bulkDuration, setBulkDuration] = useState<'indefinite' | 'temporary'>('indefinite');
   const [bulkStartDate, setBulkStartDate] = useState<string>('');
   const [bulkEndDate, setBulkEndDate] = useState<string>('');
+  const [currentPrices, setCurrentPrices] = useState<CurrentSlotPrice[]>([]);
+  const [effectiveDaySlots, setEffectiveDaySlots] = useState<string[]>([]);
+  const [effectiveNightSlots, setEffectiveNightSlots] = useState<string[]>([]);
   const [newSlotTime, setNewSlotTime] = useState<string>('');
   const [newSlotPrice, setNewSlotPrice] = useState<string>('');
   const router = useRouter();
@@ -112,7 +127,8 @@ export default function SlotPricesPage() {
     try {
       await Promise.all([
         fetchSlotPrices(),
-        fetchAvailableTimeSlots()
+        fetchAvailableTimeSlots(),
+        fetchCurrentSlotPrices()
       ]);
     } catch (error) {
       console.error('Error fetching initial data:', error);
@@ -148,6 +164,33 @@ export default function SlotPricesPage() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const fetchCurrentSlotPrices = async () => {
+    try {
+      const response = await api.get('/current_slot_prices');
+      if (response.data.success) {
+        setCurrentPrices(response.data.prices || []);
+        setEffectiveDaySlots(response.data.day_slots || []);
+        setEffectiveNightSlots(response.data.night_slots || []);
+      }
+    } catch (error) {
+      console.error('Error fetching current slot prices:', error);
+      showMessage('error', 'Failed to fetch current effective prices');
+    }
+  };
+
+  const getCurrentPriceEntry = (slot: string, day: string) => {
+    return currentPrices.find(p => p.time_slot === slot && p.day_of_week === day);
+  };
+
+  const toggleBulkDay = (day: string) => {
+    setBulkSelectedDays(prev => {
+      if (prev.includes(day)) {
+        return prev.filter(d => d !== day);
+      }
+      return [...prev, day];
+    });
   };
 
   const showMessage = (type: 'success' | 'error', text: string) => {
@@ -225,40 +268,35 @@ export default function SlotPricesPage() {
       showMessage('error', 'Please enter a valid price');
       return;
     }
+    if (bulkSelectedDays.length === 0) {
+      showMessage('error', 'Please select at least one day');
+      return;
+    }
 
     if (bulkDuration === 'temporary' && (!bulkStartDate || !bulkEndDate)) {
       showMessage('error', 'Please select start and end dates for temporary pricing');
       return;
     }
 
-    const dayRange = getDynamicTimeRangeLabel(availableTimeSlots, 'day');
-    const nightRange = getDynamicTimeRangeLabel(availableTimeSlots, 'night');
-    
-    const priceTypeLabels = {
-      'weekday-day': `Weekday Day (${dayRange})`,
-      'weekday-night': `Weekday Night (${nightRange})`, 
-      'weekend-day': `Weekend Day (${dayRange})`,
-      'weekend-night': `Weekend Night (${nightRange})`
-    };
-
     const durationLabel = bulkDuration === 'indefinite' ? 'indefinitely' : `from ${bulkStartDate} to ${bulkEndDate}`;
-    
-    if (window.confirm(`Apply price ৳${bulkPrice} to ${priceTypeLabels[bulkPriceType]} ${durationLabel}?`)) {
+    const sessionSlots = bulkSession === 'day' ? getDaySlots(availableTimeSlots) : getNightSlots(availableTimeSlots);
+    const selectedDaysLabel = bulkSelectedDays
+      .map(day => daysOfWeek.find(d => d.value === day)?.label || day)
+      .join(', ');
+    if (sessionSlots.length === 0) {
+      showMessage('error', `No ${bulkSession} slots found to update`);
+      return;
+    }
+
+    if (window.confirm(`Apply price ৳${bulkPrice} to ${bulkSession} slots (${sessionSlots.length}) for ${selectedDaysLabel} ${durationLabel}?`)) {
       try {
         const promises: Promise<any>[] = [];
-        
-        const targetDays = bulkPriceType.includes('weekday') ? weekdays : weekends;
-        const daySlots = getDaySlots(availableTimeSlots);
-        const nightSlots = getNightSlots(availableTimeSlots);
-        const targetSlots = bulkPriceType.includes('day') ? daySlots : nightSlots;
 
-        console.log('Bulk update - Target days:', targetDays);
-        console.log('Bulk update - Target slots:', targetSlots);
-        console.log('Day slots:', daySlots);
-        console.log('Night slots:', nightSlots);
+        console.log('Bulk update - Target days:', bulkSelectedDays);
+        console.log('Bulk update - Target slots:', sessionSlots);
 
-        targetDays.forEach(day => {
-          targetSlots.forEach(slot => {
+        bulkSelectedDays.forEach(day => {
+          sessionSlots.forEach(slot => {
             const submitData = new FormData();
             submitData.append('time_slot', slot);
             submitData.append('day_of_week', day);
@@ -295,7 +333,8 @@ export default function SlotPricesPage() {
 
         await Promise.all([
           fetchSlotPrices(),
-          fetchAvailableTimeSlots()
+          fetchAvailableTimeSlots(),
+          fetchCurrentSlotPrices()
         ]); // Refresh data
       } catch (error: any) {
         console.error('Bulk update error:', error);
@@ -340,73 +379,6 @@ export default function SlotPricesPage() {
     } catch (error) {
       showMessage('error', 'Error adding new slot');
     }
-  };
-
-  const getGroupedPrices = () => {
-    const grouped: {
-      [key: string]: {
-        [day: string]: { day: number; night: number }
-      }
-    } = {};
-
-    console.log('All slot prices for grouping:', slotPrices);
-
-    // Get dynamic day/night slots
-    const daySlots = getDaySlots(availableTimeSlots);
-    const nightSlots = getNightSlots(availableTimeSlots);
-    
-    const today = new Date();
-
-    const pickEffectivePrice = (prices: SlotPrice[]) => {
-      if (prices.length === 0) return null;
-
-      const activePrices = prices.filter(sp => {
-        if (!sp.start_date || !sp.end_date) return false;
-        const start = new Date(sp.start_date);
-        const end = new Date(sp.end_date);
-        return today >= start && today <= end;
-      });
-      if (activePrices.length > 0) {
-        // Prefer the most recent active range
-        return activePrices.sort((a, b) => (a.start_date || '').localeCompare(b.start_date || '')).pop() || activePrices[0];
-      }
-
-      const defaultPrices = prices.filter(sp => sp.is_default);
-      if (defaultPrices.length > 0) {
-        return defaultPrices[0];
-      }
-
-      return prices[0];
-    };
-
-    // Group by day type (weekday/weekend) then by individual days
-    const dayTypes = { weekday: weekdays, weekend: weekends };
-    
-    Object.entries(dayTypes).forEach(([dayType, days]) => {
-      grouped[dayType] = {};
-      days.forEach(day => {
-        const dayPrices = daySlots
-          .map(slot => pickEffectivePrice(slotPrices.filter(sp => sp.day_of_week === day && sp.time_slot === slot)))
-          .filter(Boolean) as SlotPrice[];
-        const nightPrices = nightSlots
-          .map(slot => pickEffectivePrice(slotPrices.filter(sp => sp.day_of_week === day && sp.time_slot === slot)))
-          .filter(Boolean) as SlotPrice[];
-        
-        console.log(`${day} - Day prices (${daySlots.length} slots):`, dayPrices);
-        console.log(`${day} - Night prices (${nightSlots.length} slots):`, nightPrices);
-        
-        const avgDayPrice = dayPrices.length > 0 ? dayPrices.reduce((sum, sp) => sum + sp.price, 0) / dayPrices.length : 0;
-        const avgNightPrice = nightPrices.length > 0 ? nightPrices.reduce((sum, sp) => sum + sp.price, 0) / nightPrices.length : 0;
-        
-        grouped[dayType][day] = {
-          day: avgDayPrice,
-          night: avgNightPrice
-        };
-      });
-    });
-
-    console.log('Grouped prices:', grouped);
-    return grouped;
   };
 
   if (isLoading) {
@@ -591,17 +563,57 @@ export default function SlotPricesPage() {
               <h3 className="text-lg font-medium text-white mb-6">Bulk Price Update</h3>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Price Type</label>
-                  <select
-                    value={bulkPriceType}
-                    onChange={(e) => setBulkPriceType(e.target.value as any)}
-                    className="w-full bg-gray-800 border border-gray-700 rounded-md px-3 py-2 text-white focus:border-orange-500 focus:outline-none transition-colors"
-                  >
-                    <option value="weekday-day">Weekday Day ({getDynamicTimeRangeLabel(availableTimeSlots, 'day')})</option>
-                    <option value="weekday-night">Weekday Night ({getDynamicTimeRangeLabel(availableTimeSlots, 'night')})</option>
-                    <option value="weekend-day">Weekend Day ({getDynamicTimeRangeLabel(availableTimeSlots, 'day')})</option>
-                    <option value="weekend-night">Weekend Night ({getDynamicTimeRangeLabel(availableTimeSlots, 'night')})</option>
-                  </select>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Session</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setBulkSession('day')}
+                      className={`px-3 py-2 rounded-md border text-sm transition-colors ${
+                        bulkSession === 'day'
+                          ? 'bg-orange-600 text-white border-orange-500'
+                          : 'bg-gray-800 text-gray-300 border-gray-700 hover:bg-gray-700'
+                      }`}
+                    >
+                      Day
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBulkSession('night')}
+                      className={`px-3 py-2 rounded-md border text-sm transition-colors ${
+                        bulkSession === 'night'
+                          ? 'bg-orange-600 text-white border-orange-500'
+                          : 'bg-gray-800 text-gray-300 border-gray-700 hover:bg-gray-700'
+                      }`}
+                    >
+                      Night
+                    </button>
+                  </div>
+                  <div className="text-xs text-gray-400 mt-2">
+                    Day slots: {getDaySlots(availableTimeSlots).join(', ') || 'None'}
+                  </div>
+                  <div className="text-xs text-gray-400 mt-1">
+                    Night slots: {getNightSlots(availableTimeSlots).join(', ') || 'None'}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Days (Multi-select)</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {daysOfWeek.map(day => (
+                      <label
+                        key={day.value}
+                        className="flex items-center gap-2 bg-gray-800/60 border border-gray-700 rounded-md px-2 py-2 text-sm text-gray-200"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={bulkSelectedDays.includes(day.value)}
+                          onChange={() => toggleBulkDay(day.value)}
+                          className="accent-orange-500"
+                        />
+                        {day.label}
+                      </label>
+                    ))}
+                  </div>
                 </div>
 
                 <div>
@@ -743,93 +755,40 @@ export default function SlotPricesPage() {
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-lg font-medium text-white">Price Overview</h3>
               <button
-                onClick={fetchSlotPrices}
+                onClick={async () => {
+                  await Promise.all([fetchSlotPrices(), fetchCurrentSlotPrices()]);
+                }}
                 className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-md transition-colors text-sm"
               >
                 Refresh
               </button>
             </div>
 
-            {/* Unified Price Matrix - Weekdays */}
             <div className="mb-8">
               <h4 className="text-md font-medium text-white mb-4 flex items-center">
                 <span className="w-3 h-3 bg-orange-500 rounded mr-2"></span>
-                Weekdays (Mon - Fri)
+                Effective Current Price Matrix
               </h4>
-              <div className="overflow-x-auto">
-                <table className="w-full text-white text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-700 bg-gray-800/50">
-                      <th className="text-left py-3 px-4 text-gray-400 font-medium">Time Slot</th>
-                      <th className="text-center py-3 px-3 text-gray-400 font-medium">Mon</th>
-                      <th className="text-center py-3 px-3 text-gray-400 font-medium">Tue</th>
-                      <th className="text-center py-3 px-3 text-gray-400 font-medium">Wed</th>
-                      <th className="text-center py-3 px-3 text-gray-400 font-medium">Thu</th>
-                      <th className="text-center py-3 px-3 text-gray-400 font-medium">Fri</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {availableTimeSlots.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="py-8 text-center text-gray-500">
-                          No time slots available. Add slots in the "Manage Slots" tab.
-                        </td>
-                      </tr>
-                    ) : (
-                      availableTimeSlots.map((slot) => (
-                        <tr key={slot} className="border-b border-gray-800/50 hover:bg-gray-800/30">
-                          <td className="py-3 px-4 font-medium text-gray-300">
-                            {slot}
-                          </td>
-                          {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'].map(day => {
-                            const priceEntry = slotPrices.find(sp => sp.time_slot === slot && sp.day_of_week === day);
-                            return (
-                              <td key={day} className="py-3 px-3 text-center">
-                                {priceEntry ? (
-                                  <button
-                                    onClick={() => handleEdit(priceEntry)}
-                                    className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
-                                      priceEntry.is_default
-                                        ? 'bg-gray-700 hover:bg-gray-600 text-white'
-                                        : 'bg-orange-600/20 hover:bg-orange-600/30 text-orange-400 border border-orange-500/30'
-                                    }`}
-                                    title={priceEntry.start_date ? `Custom: ${priceEntry.start_date} - ${priceEntry.end_date}` : 'Default price (click to edit)'}
-                                  >
-                                    ৳{priceEntry.price}
-                                  </button>
-                                ) : (
-                                  <span className="text-gray-600">-</span>
-                                )}
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
+              <div className="mb-3 space-y-1 text-xs text-gray-400">
+                <div>Day slots: {(effectiveDaySlots.length > 0 ? effectiveDaySlots : getDaySlots(availableTimeSlots)).join(', ') || 'None'}</div>
+                <div>Night slots: {(effectiveNightSlots.length > 0 ? effectiveNightSlots : getNightSlots(availableTimeSlots)).join(', ') || 'None'}</div>
               </div>
-            </div>
-
-            {/* Unified Price Matrix - Weekends */}
-            <div className="mb-8">
-              <h4 className="text-md font-medium text-white mb-4 flex items-center">
-                <span className="w-3 h-3 bg-orange-500 rounded mr-2"></span>
-                Weekends (Sat - Sun)
-              </h4>
               <div className="overflow-x-auto">
                 <table className="w-full text-white text-sm">
                   <thead>
                     <tr className="border-b border-gray-700 bg-gray-800/50">
                       <th className="text-left py-3 px-4 text-gray-400 font-medium">Time Slot</th>
-                      <th className="text-center py-3 px-4 text-gray-400 font-medium">Saturday</th>
-                      <th className="text-center py-3 px-4 text-gray-400 font-medium">Sunday</th>
+                      {dayOrder.map(day => (
+                        <th key={day} className="text-center py-3 px-3 text-gray-400 font-medium">
+                          {daysOfWeek.find(d => d.value === day)?.label.slice(0, 3) || day}
+                        </th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
                     {availableTimeSlots.length === 0 ? (
                       <tr>
-                        <td colSpan={3} className="py-8 text-center text-gray-500">
+                        <td colSpan={8} className="py-8 text-center text-gray-500">
                           No time slots available.
                         </td>
                       </tr>
@@ -839,22 +798,27 @@ export default function SlotPricesPage() {
                           <td className="py-3 px-4 font-medium text-gray-300">
                             {slot}
                           </td>
-                          {['Saturday', 'Sunday'].map(day => {
-                            const priceEntry = slotPrices.find(sp => sp.time_slot === slot && sp.day_of_week === day);
+                          {dayOrder.map(day => {
+                            const priceEntry = getCurrentPriceEntry(slot, day);
                               return (
-                                <td key={day} className="py-3 px-4 text-center">
-                                  {priceEntry ? (
-                                    <button
-                                      onClick={() => handleEdit(priceEntry)}
-                                      className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
-                                        priceEntry.is_default
-                                          ? 'bg-gray-700 hover:bg-gray-600 text-white'
-                                          : 'bg-orange-600/20 hover:bg-orange-600/30 text-orange-400 border border-orange-500/30'
+                                <td key={day} className="py-3 px-3 text-center">
+                                  {priceEntry && priceEntry.price !== null ? (
+                                    <span
+                                      className={`px-3 py-1 rounded text-sm font-medium ${
+                                        priceEntry.source === 'ACTIVE_TEMPORARY'
+                                          ? 'bg-orange-600/20 text-orange-300 border border-orange-500/30'
+                                          : priceEntry.source === 'DEFAULT'
+                                          ? 'bg-gray-700 text-white'
+                                          : 'bg-gray-800 text-gray-300 border border-gray-700'
                                       }`}
-                                      title={priceEntry.start_date ? `Custom: ${priceEntry.start_date} - ${priceEntry.end_date}` : 'Default price (click to edit)'}
+                                      title={
+                                        priceEntry.start_date
+                                          ? `${priceEntry.source}: ${priceEntry.start_date} to ${priceEntry.end_date || ''}`
+                                          : `${priceEntry.source}`
+                                      }
                                     >
                                       ৳{priceEntry.price}
-                                    </button>
+                                    </span>
                                   ) : (
                                     <span className="text-gray-600">-</span>
                                   )}

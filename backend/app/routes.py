@@ -1387,6 +1387,115 @@ async def get_available_time_slots(db: AsyncSession = Depends(get_db)):
         logging.error(f"Error fetching available time slots: {str(exc)}")
         return JSONResponse(status_code=500, content={"success": False, "message": f"Error fetching available time slots: {str(exc)}"})
 
+
+@router.get("/current_slot_prices", response_class=JSONResponse)
+async def get_current_slot_prices(db: AsyncSession = Depends(get_db)):
+    try:
+        slot_order = [
+            "9:30 AM - 11:00 AM",
+            "11:00 AM - 12:30 PM",
+            "12:30 PM - 2:00 PM",
+            "3:00 PM - 4:30 PM",
+            "4:30 PM - 6:00 PM",
+            "6:00 PM - 7:30 PM",
+            "7:30 PM - 9:00 PM",
+            "9:00 PM - 10:30 PM"
+        ]
+        day_order = [
+            DayOfWeek.MONDAY,
+            DayOfWeek.TUESDAY,
+            DayOfWeek.WEDNESDAY,
+            DayOfWeek.THURSDAY,
+            DayOfWeek.FRIDAY,
+            DayOfWeek.SATURDAY,
+            DayOfWeek.SUNDAY
+        ]
+
+        def is_day_slot(slot: str) -> bool:
+            start_time = slot.split(" - ")[0].strip()
+            parts = start_time.split(" ")
+            if len(parts) != 2:
+                return False
+            time_part, am_pm = parts
+            hour = int(time_part.split(":")[0])
+            if am_pm == "AM":
+                return True
+            if am_pm == "PM" and hour == 12:
+                return True
+            if am_pm == "PM" and hour < 6:
+                return True
+            return False
+
+        all_prices_result = await db.execute(select(SlotPrice))
+        all_prices = all_prices_result.scalars().all()
+
+        distinct_slots = sorted(
+            list({sp.time_slot for sp in all_prices}),
+            key=lambda x: slot_order.index(x) if x in slot_order else 999
+        )
+        day_slots = [slot for slot in distinct_slots if is_day_slot(slot)]
+        night_slots = [slot for slot in distinct_slots if not is_day_slot(slot)]
+        today = datetime.now().date()
+
+        def pick_effective(prices: list[SlotPrice]) -> tuple[SlotPrice | None, str]:
+            if not prices:
+                return None, "NONE"
+
+            active_temporary = [
+                sp for sp in prices
+                if (not sp.is_default)
+                and sp.start_date is not None
+                and sp.end_date is not None
+                and sp.start_date <= today <= sp.end_date
+            ]
+            if active_temporary:
+                selected = sorted(active_temporary, key=lambda sp: sp.start_date or today)[-1]
+                return selected, "ACTIVE_TEMPORARY"
+
+            default_rows = [sp for sp in prices if sp.is_default]
+            clean_defaults = [sp for sp in default_rows if sp.start_date is None and sp.end_date is None]
+            if clean_defaults:
+                return clean_defaults[0], "DEFAULT"
+            if default_rows:
+                return default_rows[0], "DEFAULT"
+
+            selected = sorted(prices, key=lambda sp: sp.start_date or today)[-1]
+            return selected, "FALLBACK"
+
+        effective_prices = []
+        for slot in distinct_slots:
+            for day in day_order:
+                candidates = [
+                    sp for sp in all_prices
+                    if sp.time_slot == slot and sp.day_of_week == day
+                ]
+                selected, source = pick_effective(candidates)
+                effective_prices.append({
+                    "time_slot": slot,
+                    "day_of_week": day.name,
+                    "price": selected.price if selected else None,
+                    "source": source,
+                    "entry_id": selected.id if selected else None,
+                    "is_default": selected.is_default if selected else None,
+                    "start_date": selected.start_date.isoformat() if selected and selected.start_date else None,
+                    "end_date": selected.end_date.isoformat() if selected and selected.end_date else None,
+                    "candidate_count": len(candidates)
+                })
+
+        return JSONResponse(content={
+            "success": True,
+            "day_slots": day_slots,
+            "night_slots": night_slots,
+            "prices": effective_prices
+        })
+    except Exception as exc:
+        logging.error(f"Error fetching current slot prices: {str(exc)}")
+        return JSONResponse(status_code=500, content={
+            "success": False,
+            "message": f"Error fetching current slot prices: {str(exc)}"
+        })
+
+
 @router.post("/add_update_slot_price", response_class=JSONResponse)
 async def add_update_slot_price(
     time_slot: str = Form(...),
