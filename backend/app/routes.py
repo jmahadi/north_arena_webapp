@@ -254,15 +254,22 @@ async def dashboard(current_user: User = Depends(get_current_user), db: AsyncSes
         seven_days_ago = today - timedelta(days=7)
         thirty_days_ago = today - timedelta(days=30)
         payment_types = [TransactionType.BOOKING_PAYMENT, TransactionType.SLOT_PAYMENT]
+        active_booking_filter = or_(Booking.is_cancelled == False, Booking.is_cancelled.is_(None))
 
         # Basic metrics
         bookings_this_month = await db.execute(
-            select(func.count(Booking.id)).filter(Booking.booking_date >= first_day_of_month)
+            select(func.count(Booking.id)).filter(
+                Booking.booking_date >= first_day_of_month,
+                active_booking_filter
+            )
         )
         bookings_this_month = bookings_this_month.scalar_one()
 
         upcoming_bookings = await db.execute(
-            select(func.count(Booking.id)).filter(Booking.booking_date >= today)
+            select(func.count(Booking.id)).filter(
+                Booking.booking_date >= today,
+                active_booking_filter
+            )
         )
         upcoming_bookings = upcoming_bookings.scalar_one()
 
@@ -289,7 +296,9 @@ async def dashboard(current_user: User = Depends(get_current_user), db: AsyncSes
         revenue_change = ((revenue_this_month - revenue_last_month) / revenue_last_month * 100) if revenue_last_month else 100
 
         # New enhanced metrics
-        total_bookings = await db.execute(select(func.count(Booking.id)))
+        total_bookings = await db.execute(
+            select(func.count(Booking.id)).filter(active_booking_filter)
+        )
         total_bookings = total_bookings.scalar_one()
 
         total_revenue = await db.execute(
@@ -299,7 +308,10 @@ async def dashboard(current_user: User = Depends(get_current_user), db: AsyncSes
         total_revenue = total_revenue.scalar_one() or 0
 
         bookings_last_week = await db.execute(
-            select(func.count(Booking.id)).filter(Booking.booking_date >= seven_days_ago)
+            select(func.count(Booking.id)).filter(
+                Booking.booking_date >= seven_days_ago,
+                active_booking_filter
+            )
         )
         bookings_last_week = bookings_last_week.scalar_one()
 
@@ -314,14 +326,20 @@ async def dashboard(current_user: User = Depends(get_current_user), db: AsyncSes
 
         # Today's bookings
         todays_bookings = await db.execute(
-            select(func.count(Booking.id)).filter(Booking.booking_date == today)
+            select(func.count(Booking.id)).filter(
+                Booking.booking_date == today,
+                active_booking_filter
+            )
         )
         todays_bookings = todays_bookings.scalar_one()
 
         # Most popular time slots (last 30 days)
         popular_slots = await db.execute(
             select(Booking.time_slot, func.count(Booking.id).label('count'))
-            .filter(Booking.booking_date >= thirty_days_ago)
+            .filter(
+                Booking.booking_date >= thirty_days_ago,
+                active_booking_filter
+            )
             .group_by(Booking.time_slot)
             .order_by(func.count(Booking.id).desc())
             .limit(5)
@@ -370,7 +388,10 @@ async def dashboard(current_user: User = Depends(get_current_user), db: AsyncSes
                 Booking.booking_date,
                 func.count(Booking.id).label('count')
             )
-            .filter(Booking.booking_date >= thirty_days_ago)
+            .filter(
+                Booking.booking_date >= thirty_days_ago,
+                active_booking_filter
+            )
             .group_by(Booking.booking_date)
         )
         daily_bookings_map = {str(row[0]): row[1] for row in daily_bookings_result}
@@ -385,6 +406,7 @@ async def dashboard(current_user: User = Depends(get_current_user), db: AsyncSes
         # Recent bookings (last 5)
         recent_bookings = await db.execute(
             select(Booking.name, Booking.booking_date, Booking.time_slot, Booking.created_at)
+            .filter(active_booking_filter)
             .order_by(Booking.created_at.desc())
             .limit(5)
         )
