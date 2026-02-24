@@ -68,6 +68,15 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
     }
   }, [isOpen, bookingId, fetchPaymentSummary]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [isOpen]);
+
   // Reset form when editing transaction changes
   useEffect(() => {
     if (editingTransaction) {
@@ -187,7 +196,7 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
-      <div className="flex min-h-screen items-center justify-center p-4">
+      <div className="flex min-h-screen items-start justify-center p-4 pt-10 sm:items-center sm:pt-4">
         <div className="fixed inset-0 bg-black/70" onClick={onClose} />
 
         <div className="relative w-full max-w-md bg-gray-900 border border-gray-800 rounded-lg shadow-xl">
@@ -215,7 +224,7 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
           </div>
 
           {/* Content */}
-          <div className="p-4 max-h-[70vh] overflow-y-auto">
+          <div className="p-4 max-h-[78vh] overflow-y-auto">
             {isLoading ? (
               <div className="flex items-center justify-center py-8">
                 <div className="text-gray-500 text-sm">Loading...</div>

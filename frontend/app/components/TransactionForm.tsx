@@ -168,10 +168,9 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
 
   return (
     <form onSubmit={handleSubmit} className="bg-black/40 border border-gray-800 p-6 rounded-lg shadow-lg mb-8">
-      {/* Form title changes based on mode */}
-      <h2 className="text-2xl font-semibold text-white mb-6">
-        {editingTransaction ? 'Edit Transaction' : 'Add Transaction'}
-      </h2>
+      <div className="text-xs text-gray-400 uppercase tracking-wide mb-4">
+        {editingTransaction ? 'Editing Transaction' : 'New Transaction'}
+      </div>
       
       {error && (
         <div className="mb-4 p-3 bg-red-500 bg-opacity-20 border border-red-500 rounded text-red-500">

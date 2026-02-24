@@ -64,9 +64,46 @@ export default function BookingForm({
   isBulkBooking,
   setIsBulkBooking
 }: BookingFormProps) {
+  const renderDaySelector = () => (
+    <div>
+      <label className="block text-sm font-medium text-gray-300 mb-2">Days of Week</label>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        {['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'].map(day => {
+          const isSelected = academyDaysOfWeek.includes(day);
+          return (
+            <label
+              key={day}
+              className={`flex items-center gap-2 rounded-md border px-2 py-2 text-xs cursor-pointer transition-colors ${
+                isSelected
+                  ? 'bg-orange-600/20 border-orange-500/40 text-orange-300'
+                  : 'bg-gray-800/60 border-gray-700 text-gray-300 hover:bg-gray-700/60'
+              }`}
+            >
+              <input
+                type="checkbox"
+                checked={isSelected}
+                onChange={(e) => {
+                  if (e.target.checked) {
+                    setAcademyDaysOfWeek([...academyDaysOfWeek, day]);
+                  } else {
+                    setAcademyDaysOfWeek(academyDaysOfWeek.filter(d => d !== day));
+                  }
+                }}
+                className="accent-orange-500"
+              />
+              {day.charAt(0) + day.slice(1).toLowerCase()}
+            </label>
+          );
+        })}
+      </div>
+    </div>
+  );
+
   return (
     <form onSubmit={handleSubmit} className="bg-black/40 border border-gray-800 p-6 rounded-lg shadow-lg">
-      <h2 className="text-2xl font-semibold text-white mb-6">Add/Edit Booking</h2>
+      <div className="mb-4 text-xs text-gray-400 uppercase tracking-wide">
+        {selectedBookingId ? 'Editing Booking' : 'Create Booking'}
+      </div>
       <div className="space-y-4">
         <div>
           <label className="block text-sm font-medium text-gray-300 mb-2">Booking Type</label>
@@ -102,6 +139,7 @@ export default function BookingForm({
             className="mt-1 block w-full rounded-md bg-black/20 border border-gray-700 text-white focus:border-orange-500 focus:outline-none transition-colors p-2"
             placeholder="Enter name"
             required
+            autoComplete="name"
           />
         </div>
         <div>
@@ -113,6 +151,7 @@ export default function BookingForm({
             className="mt-1 block w-full rounded-md bg-black/20 border border-gray-700 text-white focus:border-orange-500 focus:outline-none transition-colors p-2"
             placeholder="Enter phone number"
             required
+            autoComplete="tel"
           />
         </div>
         {bookingType === 'NORMAL' ? (
@@ -154,25 +193,7 @@ export default function BookingForm({
                     required
                   />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Days of Week</label>
-                  <select
-                    multiple
-                    value={academyDaysOfWeek}
-                    onChange={(e) => {
-                      const selected = Array.from(e.target.selectedOptions, option => option.value);
-                      setAcademyDaysOfWeek(selected);
-                    }}
-                    className="mt-1 block w-full rounded-md bg-gray-700 border-gray-600 text-white focus:ring-2 focus:ring-primary min-h-[120px]"
-                  >
-                    {['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'].map(day => (
-                      <option key={day} value={day} className="py-1">
-                        {day.charAt(0) + day.slice(1).toLowerCase()}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="mt-1 text-xs text-gray-400">Hold Ctrl/Cmd to select multiple days</p>
-                </div>
+                {renderDaySelector()}
                 {academyStartDate && academyEndDate && (
                   <div className="p-3 bg-gray-800/50 rounded-lg border border-gray-600">
                     <div className="text-sm text-gray-300">
@@ -256,25 +277,7 @@ export default function BookingForm({
                 required
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">Days of Week</label>
-              <select
-                multiple
-                value={academyDaysOfWeek}
-                onChange={(e) => {
-                  const selected = Array.from(e.target.selectedOptions, option => option.value);
-                  setAcademyDaysOfWeek(selected);
-                }}
-                className="mt-1 block w-full rounded-md bg-gray-700 border-gray-600 text-white focus:ring-2 focus:ring-primary min-h-[120px]"
-              >
-                {['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'].map(day => (
-                  <option key={day} value={day} className="py-1">
-                    {day.charAt(0) + day.slice(1).toLowerCase()}
-                  </option>
-                ))}
-              </select>
-              <p className="mt-1 text-xs text-gray-400">Hold Ctrl/Cmd to select multiple days</p>
-            </div>
+            {renderDaySelector()}
             {academyStartDate && academyEndDate && (
               <div className="p-3 bg-gray-800/50 rounded-lg border border-gray-600">
                 <div className="text-sm text-gray-300">
