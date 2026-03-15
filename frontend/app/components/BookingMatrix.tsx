@@ -13,7 +13,6 @@ const TIME_SLOTS = [
 
 // Compact time slot display
 const getCompactTimeSlot = (slot: string) => {
-  // "9:30 AM - 11:00 AM" => "9:30-11:00"
   return slot.replace(' AM', '').replace(' PM', '').replace(' - ', '-');
 };
 
@@ -54,7 +53,6 @@ export default function BookingMatrix({ bookings, handleCellClick, startDate, en
   const hasUserScrolledRef = useRef(false);
   const lastScrollLeftRef = useRef(0);
 
-  // Handle scroll to detect edges - only trigger loading after user has scrolled
   const handleScroll = useCallback(() => {
     const container = scrollContainerRef.current;
     if (!container || isLoadingMore !== false) return;
@@ -62,41 +60,33 @@ export default function BookingMatrix({ bookings, handleCellClick, startDate, en
     const { scrollLeft, scrollWidth, clientWidth } = container;
     const scrollRight = scrollWidth - clientWidth - scrollLeft;
 
-    // Detect if user has actually scrolled (not just initial position)
     if (Math.abs(scrollLeft - lastScrollLeftRef.current) > 10) {
       hasUserScrolledRef.current = true;
     }
     lastScrollLeftRef.current = scrollLeft;
 
-    // Only show indicators if user has scrolled
     if (hasUserScrolledRef.current) {
       setShowLeftIndicator(scrollLeft < 50 && onLoadPreviousWeek !== undefined);
       setShowRightIndicator(scrollRight < 50 && onLoadNextWeek !== undefined);
     }
 
-    // Debounce the actual loading to prevent multiple triggers
     if (scrollDebounceRef.current) {
       clearTimeout(scrollDebounceRef.current);
     }
 
-    // Only trigger loading if user has actively scrolled
     if (hasUserScrolledRef.current) {
       scrollDebounceRef.current = setTimeout(() => {
-        // Load previous week when scrolled to the very left edge
         if (scrollLeft <= 5 && onLoadPreviousWeek) {
-          hasUserScrolledRef.current = false; // Reset after triggering
+          hasUserScrolledRef.current = false;
           onLoadPreviousWeek();
-        }
-        // Load next week when scrolled to the very right edge
-        else if (scrollRight <= 5 && onLoadNextWeek) {
-          hasUserScrolledRef.current = false; // Reset after triggering
+        } else if (scrollRight <= 5 && onLoadNextWeek) {
+          hasUserScrolledRef.current = false;
           onLoadNextWeek();
         }
       }, 300);
     }
   }, [onLoadPreviousWeek, onLoadNextWeek, isLoadingMore]);
 
-  // Set up scroll listener
   useEffect(() => {
     const container = scrollContainerRef.current;
     if (container) {
@@ -110,28 +100,24 @@ export default function BookingMatrix({ bookings, handleCellClick, startDate, en
     }
   }, [handleScroll]);
 
-  // Note: We don't reset scroll tracking on date changes anymore
-  // since we're expanding the range, not shifting it
   const getDatesInRange = (start: string, end: string) => {
     const dates = [];
     let currentDate = new Date(start);
     const endDate = new Date(end);
-
     while (currentDate <= endDate) {
       dates.push(new Date(currentDate));
       currentDate.setDate(currentDate.getDate() + 1);
     }
-
     return dates;
   };
 
   const dateRange = getDatesInRange(startDate, endDate);
 
   return (
-    <div className="bg-black/40 border border-gray-800 rounded-lg p-4 relative">
-        {/* Left edge indicator - shows when near edge or loading */}
+    <div className="glass-card rounded-xl p-4 relative animate-fadeInUp">
+        {/* Left edge indicator */}
         {(showLeftIndicator || isLoadingMore === 'left') && (
-          <div className="absolute left-0 top-0 bottom-0 w-16 bg-gradient-to-r from-orange-500/30 to-transparent z-20 flex items-center justify-start pl-2 pointer-events-none">
+          <div className="absolute left-0 top-0 bottom-0 w-16 bg-gradient-to-r from-orange-500/20 to-transparent z-20 flex items-center justify-start pl-2 pointer-events-none rounded-l-xl">
             <div className="flex flex-col items-center text-orange-400">
               {isLoadingMore === 'left' ? (
                 <>
@@ -153,9 +139,9 @@ export default function BookingMatrix({ bookings, handleCellClick, startDate, en
           </div>
         )}
 
-        {/* Right edge indicator - shows when near edge or loading */}
+        {/* Right edge indicator */}
         {(showRightIndicator || isLoadingMore === 'right') && (
-          <div className="absolute right-0 top-0 bottom-0 w-16 bg-gradient-to-l from-orange-500/30 to-transparent z-20 flex items-center justify-end pr-2 pointer-events-none">
+          <div className="absolute right-0 top-0 bottom-0 w-16 bg-gradient-to-l from-orange-500/20 to-transparent z-20 flex items-center justify-end pr-2 pointer-events-none rounded-r-xl">
             <div className="flex flex-col items-center text-orange-400">
               {isLoadingMore === 'right' ? (
                 <>
@@ -181,13 +167,13 @@ export default function BookingMatrix({ bookings, handleCellClick, startDate, en
           <table className="w-full border-collapse">
             <thead>
               <tr>
-                <th className="sticky left-0 z-10 bg-black/40 p-1 text-[10px] text-gray-400 font-normal w-20"></th>
+                <th className="sticky left-0 z-10 bg-transparent p-1 text-[10px] text-white/30 font-normal w-20"></th>
                 {dateRange.map((date) => (
-                  <th key={date.toISOString()} className="p-1 text-center bg-black/40 w-24 min-w-[96px]">
-                  <div className="text-[13px] font-semibold text-gray-300">
+                  <th key={date.toISOString()} className="p-1 text-center w-24 min-w-[96px]">
+                  <div className="text-[13px] font-semibold text-white/60">
                     {date.toLocaleDateString('en-US', { weekday: 'short' })}
                   </div>
-                  <div className="text-xs text-gray-400">
+                  <div className="text-xs text-white/25">
                     {date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                   </div>
                 </th>
@@ -197,7 +183,7 @@ export default function BookingMatrix({ bookings, handleCellClick, startDate, en
           <tbody>
             {TIME_SLOTS.map((slot) => (
               <tr key={slot}>
-                <td className="sticky left-0 z-10 bg-black/40 p-1 pr-2 text-right text-xs text-gray-400 whitespace-nowrap font-medium w-20">
+                <td className="sticky left-0 z-10 p-1 pr-2 text-right text-xs text-white/30 whitespace-nowrap font-medium w-20">
                   {getCompactTimeSlot(slot)}
                 </td>
                 {dateRange.map((date) => {
@@ -211,13 +197,13 @@ export default function BookingMatrix({ bookings, handleCellClick, startDate, en
                     >
                       <div
                         className={`
-                          h-12 rounded cursor-pointer transition-all duration-150
+                          h-12 rounded-lg cursor-pointer transition-all duration-200
                           flex flex-col justify-center items-center px-1 relative
                           ${booking
                             ? (booking.booking_type === 'ACADEMY'
-                                ? 'bg-purple-600 hover:bg-purple-500'
-                                : 'bg-orange-600 hover:bg-orange-500')
-                            : 'bg-gray-800 hover:bg-gray-700 border border-gray-700'}
+                                ? 'bg-purple-600/80 hover:bg-purple-500/90 shadow-lg shadow-purple-500/10'
+                                : 'bg-orange-600/80 hover:bg-orange-500/90 shadow-lg shadow-orange-500/10')
+                            : 'bg-white/[0.02] hover:bg-white/[0.06] border border-white/[0.04] hover:border-orange-500/20'}
                         `}
                         onClick={() => handleCellClick(dateString, slot)}
                       >
@@ -233,14 +219,13 @@ export default function BookingMatrix({ bookings, handleCellClick, startDate, en
                               const isPartial = status === 'PARTIAL';
                               return (
                                 <div
-                                  className={`absolute top-0 right-0 w-4 h-4 flex items-center justify-center rounded-bl ${
+                                  className={`absolute top-0 right-0 w-4 h-4 flex items-center justify-center rounded-bl-lg rounded-tr-lg ${
                                     isPaid
-                                      ? 'bg-green-500'
+                                      ? 'bg-emerald-500'
                                       : isPartial
                                       ? 'bg-yellow-400'
                                       : 'bg-red-500'
                                   }`}
-                                  style={{ borderTopRightRadius: '4px' }}
                                 >
                                   {isPaid ? (
                                     <svg className="w-2.5 h-2.5 text-white" fill="currentColor" viewBox="0 0 20 20">
@@ -256,7 +241,7 @@ export default function BookingMatrix({ bookings, handleCellClick, startDate, en
                             })()}
                           </>
                         ) : (
-                          <div className="text-xs text-gray-500">Open</div>
+                          <div className="text-xs text-white/15">Open</div>
                         )}
                       </div>
                     </td>

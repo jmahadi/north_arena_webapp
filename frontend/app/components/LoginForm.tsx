@@ -9,11 +9,9 @@ const LoginForm = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  // NEW: Added loading state
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
 
-  // NEW: Check for saved redirect path
   useEffect(() => {
     const redirectPath = sessionStorage.getItem('redirectAfterLogin');
     if (redirectPath) {
@@ -24,7 +22,6 @@ const LoginForm = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    // NEW: Set loading state
     setIsLoading(true);
 
     try {
@@ -32,17 +29,13 @@ const LoginForm = () => {
       const data = await login(email, password);
       console.log('Login successful:', data);
 
-      // CHANGED: Updated token expiration to match backend (1 hour = 1/24 days)
-      Cookies.set('token', data.access_token, { 
-        expires: 1/24,  // 1 hour
-        sameSite: 'strict' 
+      Cookies.set('token', data.access_token, {
+        expires: 1/24,
+        sameSite: 'strict'
       });
       console.log('Token stored in cookie');
-      
 
-
-      // NEW: Handle redirect after login
-    const redirectPath = sessionStorage.getItem('redirectAfterLogin');
+      const redirectPath = sessionStorage.getItem('redirectAfterLogin');
       if (redirectPath) {
         sessionStorage.removeItem('redirectAfterLogin');
         console.log('Redirecting to:', redirectPath);
@@ -61,16 +54,14 @@ const LoginForm = () => {
         setError('An error occurred. Please try again.');
       }
     } finally {
-      // NEW: Reset loading state
       setIsLoading(false);
     }
-
   };
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
-        <label htmlFor="email" className="block text-sm font-medium text-gray-300 mb-1">
+        <label htmlFor="email" className="block text-xs font-medium text-white/40 mb-1.5 uppercase tracking-wider">
           Email
         </label>
         <input
@@ -78,14 +69,14 @@ const LoginForm = () => {
           id="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="block w-full px-3 py-2 bg-black/20 border border-gray-700 rounded-md text-white focus:outline-none focus:border-orange-500 transition-colors"
+          className="glass-input block w-full px-3 py-2.5 rounded-lg text-sm"
+          placeholder="admin@northarena.com"
           required
-          // NEW: Disable input during loading
           disabled={isLoading}
         />
       </div>
       <div>
-        <label htmlFor="password" className="block text-sm font-medium text-gray-300 mb-1">
+        <label htmlFor="password" className="block text-xs font-medium text-white/40 mb-1.5 uppercase tracking-wider">
           Password
         </label>
         <input
@@ -93,21 +84,21 @@ const LoginForm = () => {
           id="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          className="block w-full px-3 py-2 bg-black/20 border border-gray-700 rounded-md text-white focus:outline-none focus:border-orange-500 transition-colors"
+          className="glass-input block w-full px-3 py-2.5 rounded-lg text-sm"
+          placeholder="Enter your password"
           required
-          // NEW: Disable input during loading
           disabled={isLoading}
         />
       </div>
-      {error && <p className="text-red-500 text-xs">{error}</p>}
+      {error && <p className="text-red-400 text-xs bg-red-500/10 border border-red-500/20 rounded-lg p-2">{error}</p>}
       <button
         type="submit"
-        className="w-full flex justify-center items-center gap-2 py-2.5 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-orange-600 hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
+        className="btn-glow w-full flex justify-center items-center gap-2 py-2.5 px-4 rounded-xl text-sm font-medium text-white bg-orange-600 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed mt-2"
         disabled={isLoading}
       >
         {isLoading ? (
           <>
-            <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>

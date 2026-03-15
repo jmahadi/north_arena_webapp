@@ -84,7 +84,6 @@ export default function BookingsPage() {
   }, [router]);
 
   useEffect(() => {
-    // Skip full page reload if we're doing an incremental load
     if (isIncrementalLoadRef.current) {
       isIncrementalLoadRef.current = false;
       return;
@@ -94,40 +93,29 @@ export default function BookingsPage() {
     }
   }, [startDate, endDate]);
 
-
-
   const fetchBookingsData = async () => {
     setIsLoading(true);
     setError(null);
     try {
-      console.log('Fetching bookings data...');
-      
-      // Fetch both bookings and transaction summaries
       const [bookingsResponse, transactionSummaries] = await Promise.all([
         fetchBookings(startDate, endDate),
         getTransactionSummaries()
       ]);
-      
-      console.log('Bookings data received:', bookingsResponse);
-      console.log('Transaction summaries received:', transactionSummaries);
-      
+
       const bookingsData = bookingsResponse.bookingsData || {};
-      
-      // Create a lookup map for transaction status by booking_id
+
       const transactionStatusMap = new Map();
       transactionSummaries.forEach(summary => {
         transactionStatusMap.set(summary.booking_id, summary.status);
       });
-      
-      // Merge transaction status into bookings data
+
       Object.keys(bookingsData).forEach(key => {
         const booking = bookingsData[key];
         if (booking.id) {
           booking.transaction_status = transactionStatusMap.get(booking.id) || null;
         }
       });
-      
-      console.log('Merged bookings with transaction status:', bookingsData);
+
       setBookings(bookingsData);
     } catch (error) {
       console.error('Failed to fetch bookings:', error);
@@ -144,7 +132,6 @@ export default function BookingsPage() {
     fetchBookingsData();
   };
 
-  // Fetch bookings for a specific date range and merge with existing
   const fetchAndMergeBookings = async (fetchStart: string, fetchEnd: string) => {
     try {
       const [bookingsResponse, transactionSummaries] = await Promise.all([
@@ -154,13 +141,11 @@ export default function BookingsPage() {
 
       const newBookingsData = bookingsResponse.bookingsData || {};
 
-      // Create a lookup map for transaction status
       const transactionStatusMap = new Map();
       transactionSummaries.forEach(summary => {
         transactionStatusMap.set(summary.booking_id, summary.status);
       });
 
-      // Merge transaction status into new bookings
       Object.keys(newBookingsData).forEach(key => {
         const booking = newBookingsData[key];
         if (booking.id) {
@@ -175,7 +160,6 @@ export default function BookingsPage() {
     }
   };
 
-  // Load previous week (expand date range earlier) - appends to the left
   const handleLoadPreviousWeek = async () => {
     if (isLoadingMore) return;
     setIsLoadingMore('left');
@@ -184,21 +168,18 @@ export default function BookingsPage() {
     newStartDate.setDate(newStartDate.getDate() - 7);
     const newStartStr = newStartDate.toISOString().split('T')[0];
 
-    // Fetch only the new week's data
     const prevWeekEnd = new Date(startDate);
     prevWeekEnd.setDate(prevWeekEnd.getDate() - 1);
     const prevWeekEndStr = prevWeekEnd.toISOString().split('T')[0];
 
     const newBookings = await fetchAndMergeBookings(newStartStr, prevWeekEndStr);
 
-    // Merge with existing bookings and update date (skip full reload)
     setBookings(prev => ({ ...newBookings, ...prev }));
     isIncrementalLoadRef.current = true;
     setStartDate(newStartStr);
     setIsLoadingMore(false);
   };
 
-  // Load next week (expand date range later) - appends to the right
   const handleLoadNextWeek = async () => {
     if (isLoadingMore) return;
     setIsLoadingMore('right');
@@ -207,14 +188,12 @@ export default function BookingsPage() {
     newEndDate.setDate(newEndDate.getDate() + 7);
     const newEndStr = newEndDate.toISOString().split('T')[0];
 
-    // Fetch only the new week's data
     const nextWeekStart = new Date(endDate);
     nextWeekStart.setDate(nextWeekStart.getDate() + 1);
     const nextWeekStartStr = nextWeekStart.toISOString().split('T')[0];
 
     const newBookings = await fetchAndMergeBookings(nextWeekStartStr, newEndStr);
 
-    // Merge with existing bookings and update date (skip full reload)
     setBookings(prev => ({ ...prev, ...newBookings }));
     isIncrementalLoadRef.current = true;
     setEndDate(newEndStr);
@@ -231,7 +210,6 @@ export default function BookingsPage() {
       setSelectedBookingId(booking.id);
       setSelectedBookingTransactionStatus(booking.transaction_status || null);
 
-      // Load academy data if it's an academy booking
       if (booking.booking_type === 'ACADEMY') {
         setBookingType('ACADEMY');
         setAcademyStartDate(booking.academy_start_date || '');
@@ -248,7 +226,6 @@ export default function BookingsPage() {
       setPhone('');
       setSelectedBookingId(null);
       setSelectedBookingTransactionStatus(null);
-      // Reset to normal for new bookings
       setBookingType('NORMAL');
       setAcademyStartDate('');
       setAcademyEndDate('');
@@ -263,30 +240,13 @@ export default function BookingsPage() {
       let result;
       if (selectedBookingId && selectedSlot) {
         result = await updateBooking(
-          selectedBookingId,
-          name,
-          phone,
-          selectedDate,
-          selectedSlot,
-          startDate,
-          endDate,
-          bookingType,
-          academyStartDate,
-          academyEndDate,
-          academyDaysOfWeek
+          selectedBookingId, name, phone, selectedDate, selectedSlot, startDate, endDate,
+          bookingType, academyStartDate, academyEndDate, academyDaysOfWeek
         );
       } else if (selectedSlot) {
         result = await addBooking(
-          name,
-          phone,
-          selectedDate,
-          selectedSlot,
-          startDate,
-          endDate,
-          bookingType,
-          academyStartDate,
-          academyEndDate,
-          academyDaysOfWeek
+          name, phone, selectedDate, selectedSlot, startDate, endDate,
+          bookingType, academyStartDate, academyEndDate, academyDaysOfWeek
         );
       } else {
         throw new Error("No time slot selected");
@@ -294,7 +254,6 @@ export default function BookingsPage() {
 
       if (result.success) {
         alert(result.message);
-        // Merge new bookings data with existing bookings
         if (result.bookingsData) {
           setBookings(result.bookingsData);
         }
@@ -312,27 +271,21 @@ export default function BookingsPage() {
     }
   };
 
-  // Update the handleDelete function to handle soft-delete with payment retention
   const handleDelete = async () => {
     if (selectedBookingId) {
       try {
-        // Check if booking has transactions
         const hasTransactions = await checkBookingHasTransactions(selectedBookingId);
         let retainPayments = true;
 
         if (hasTransactions) {
-          // Show confirmation dialog for bookings with payments
           const userChoice = confirm(
             'This booking has payment records.\n\n' +
             'Click OK to cancel the booking but RETAIN payment records for accounting.\n' +
             'Click Cancel to abort deletion.'
           );
 
-          if (!userChoice) {
-            return; // User aborted
-          }
+          if (!userChoice) return;
 
-          // Ask if they want to hard delete (lose payment records)
           const hardDelete = confirm(
             'Do you also want to DELETE the payment records?\n\n' +
             'Click OK to permanently delete ALL payment records (not recommended).\n' +
@@ -341,20 +294,15 @@ export default function BookingsPage() {
 
           retainPayments = !hardDelete;
         } else {
-          // Simple confirmation for bookings without payments
           const confirmDelete = confirm('Are you sure you want to delete this booking?');
-          if (!confirmDelete) {
-            return;
-          }
-          retainPayments = false; // No payments to retain
+          if (!confirmDelete) return;
+          retainPayments = false;
         }
 
-        // Pass current date range and retain_payments flag to deleteBooking
         const result = await deleteBooking(selectedBookingId, startDate, endDate, retainPayments);
 
         if (result.success) {
           alert(result.message);
-          // Update bookings from response or refetch
           if (result.bookingsData) {
             setBookings(result.bookingsData);
           } else {
@@ -389,19 +337,16 @@ export default function BookingsPage() {
     setIsBulkBooking(false);
   };
 
-  // Open booking details modal for payment management
   const handleOpenPaymentModal = (bookingId: number) => {
     setModalBookingId(bookingId);
     setIsModalOpen(true);
   };
 
-  // Handle modal close and refresh data
   const handleModalClose = () => {
     setIsModalOpen(false);
     setModalBookingId(null);
   };
 
-  // Refresh bookings data when transactions are updated in modal
   const handleTransactionUpdate = () => {
     fetchBookingsData();
   };
@@ -419,7 +364,7 @@ export default function BookingsPage() {
               <img src="/images/White-Logomark.png" alt="Loading" className="w-10 h-10 object-contain animate-fade-in-out" />
             </div>
           </div>
-          <p className="mt-3 text-gray-400 text-sm">Loading bookings...</p>
+          <p className="mt-3 text-white/30 text-sm">Loading bookings...</p>
         </div>
       </AdminLayout>
     );
@@ -427,11 +372,11 @@ export default function BookingsPage() {
 
   return (
     <AdminLayout>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-        <h1 className="text-3xl font-light text-white mb-8">Bookings</h1>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <h1 className="text-3xl font-bold text-white mb-8 tracking-tight animate-fadeInUp">Bookings</h1>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
-          <div className="lg:col-span-1">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="lg:col-span-1 space-y-4">
             <BookingForm
               name={name}
               setName={setName}
@@ -458,32 +403,32 @@ export default function BookingsPage() {
               setIsBulkBooking={setIsBulkBooking}
             />
 
-            <div className="mt-6 bg-black/40 border border-gray-800 rounded-lg p-4">
-              <h2 className="text-sm font-medium text-gray-400 mb-3">Date Range</h2>
+            <div className="glass-card rounded-xl p-4 animate-slideInLeft" style={{ animationDelay: '0.1s', opacity: 0 }}>
+              <h2 className="text-[10px] font-medium text-white/30 mb-3 uppercase tracking-widest">Date Range</h2>
               <div className="flex flex-col space-y-3">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">Start</label>
+                    <label className="block text-[10px] text-white/25 mb-1 uppercase tracking-wider">Start</label>
                     <input
                       type="date"
                       value={startDate}
                       onChange={(e) => setStartDate(e.target.value)}
-                      className="block w-full rounded bg-black/20 border border-gray-700 text-white text-sm focus:border-orange-500 focus:outline-none transition-colors p-2"
+                      className="glass-input w-full rounded-lg text-sm p-2"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">End</label>
+                    <label className="block text-[10px] text-white/25 mb-1 uppercase tracking-wider">End</label>
                     <input
                       type="date"
                       value={endDate}
                       onChange={(e) => setEndDate(e.target.value)}
-                      className="block w-full rounded bg-black/20 border border-gray-700 text-white text-sm focus:border-orange-500 focus:outline-none transition-colors p-2"
+                      className="glass-input w-full rounded-lg text-sm p-2"
                     />
                   </div>
                 </div>
                 <button
                   onClick={handleDateRangeChange}
-                  className="w-full px-3 py-2 text-sm font-medium bg-gray-700 text-gray-200 rounded border border-gray-600 hover:bg-gray-600 transition-colors"
+                  className="w-full px-3 py-2 text-sm font-medium glass-card hover:bg-white/[0.06] text-white/60 hover:text-white rounded-lg transition-all duration-200"
                 >
                   Update Range
                 </button>

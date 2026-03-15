@@ -1,17 +1,17 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { 
-  Transaction, 
-  TransactionSummary, 
+import {
+  Transaction,
+  TransactionSummary,
   TransactionDetail,
   TransactionStatus,
   TransactionType,
-  PaymentMethod 
+  PaymentMethod
 } from '../types/transactions';
-import { 
-  getTransactionSummaries, 
-  getTransactionDetails, 
+import {
+  getTransactionSummaries,
+  getTransactionDetails,
   updateTransaction as apiUpdateTransaction,
-  deleteTransaction as apiDeleteTransaction 
+  deleteTransaction as apiDeleteTransaction
 } from '../api/transactions';
 import { format, subDays, startOfMonth, endOfMonth } from 'date-fns';
 import TransactionForm from './TransactionForm';
@@ -23,10 +23,10 @@ interface TransactionSummaryTableProps {
   onDeleteTransaction?: (transactionId: number) => Promise<void>;
   onDateRangeChange: (range: { startDate: string; endDate: string }) => void;
   currentDateRange: { startDate: string; endDate: string };
-  filterByBookingId?: number; // Add filter for specific booking
+  filterByBookingId?: number;
 }
 
-const TransactionSummaryTable: React.FC<TransactionSummaryTableProps> = ({ 
+const TransactionSummaryTable: React.FC<TransactionSummaryTableProps> = ({
   onUpdateTransaction,
   onDeleteTransaction,
   onDateRangeChange,
@@ -39,36 +39,26 @@ const TransactionSummaryTable: React.FC<TransactionSummaryTableProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [transactionDetails, setTransactionDetails] = useState<Record<number, TransactionDetail[]>>({});
   const [editingTransaction, setEditingTransaction] = useState<TransactionDetail | null>(null);
-  // Added for forcing refresh
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
-  // Memoize the fetch function to prevent unnecessary re-renders
   const fetchTransactionSummaries = useCallback(async () => {
-    console.log("Fetching transaction summaries...");
     setIsLoading(true);
     setError(null);
     try {
       const summariesData = await getTransactionSummaries();
-      console.log('Received summaries:', summariesData);
-      
       setSummaries(summariesData);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to fetch transaction summaries';
       setError(errorMessage);
-      console.error('Error in summary fetch:', err);
     } finally {
       setIsLoading(false);
     }
   }, []);
 
-  // Fetch transaction details with a memoized function
   const fetchTransactionDetails = useCallback(async (bookingId: number) => {
-    console.log(`Fetching details for booking ${bookingId}...`);
     try {
       setIsLoading(true);
       const details = await getTransactionDetails(bookingId);
-      console.log('Received details:', details);
-      
       setTransactionDetails(prev => ({
         ...prev,
         [bookingId]: details
@@ -76,7 +66,6 @@ const TransactionSummaryTable: React.FC<TransactionSummaryTableProps> = ({
       return details;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to fetch transaction details';
-      console.error('Error fetching details:', err);
       setError(errorMessage);
       return [];
     } finally {
@@ -84,28 +73,19 @@ const TransactionSummaryTable: React.FC<TransactionSummaryTableProps> = ({
     }
   }, []);
 
-  // Refresh effect - run when trigger changes or date range changes
   useEffect(() => {
-    console.log("Refresh triggered:", refreshTrigger, "Date range:", currentDateRange);
     fetchTransactionSummaries();
-    
-    // If a row is expanded, refresh its details too
     if (expandedRow !== null) {
       fetchTransactionDetails(expandedRow);
     }
   }, [fetchTransactionSummaries, fetchTransactionDetails, refreshTrigger, currentDateRange, expandedRow]);
 
   const toggleRowExpansion = async (bookingId: number) => {
-    console.log('Toggling row:', bookingId, 'Current expanded:', expandedRow);
-    
-    // Close editor if it's open
     setEditingTransaction(null);
-    
     if (expandedRow === bookingId) {
       setExpandedRow(null);
       return;
     }
-
     const details = await fetchTransactionDetails(bookingId);
     if (details && details.length > 0) {
       setExpandedRow(bookingId);
@@ -122,78 +102,53 @@ const TransactionSummaryTable: React.FC<TransactionSummaryTableProps> = ({
     setEditingTransaction(null);
   };
 
-  // Direct API calls rather than using parent component functions
   const handleSaveEdit = async (data: any) => {
     try {
-      console.log("Saving edit:", data);
       if (data.transaction_id) {
-        // Direct API call
         await apiUpdateTransaction(data.transaction_id, {
           transaction_type: data.transaction_type,
           payment_method: data.payment_method,
           amount: data.amount
         });
-        
-        // Refresh details immediately
         if (expandedRow) {
           await fetchTransactionDetails(expandedRow);
         }
-        
-        // Refresh summaries
         await fetchTransactionSummaries();
-        
-        // Close the editor
         setEditingTransaction(null);
-        
-        // Force a refresh by incrementing the trigger
         setRefreshTrigger(prev => prev + 1);
       }
     } catch (err) {
-      console.error('Failed to update transaction:', err);
       setError('Failed to update transaction. Please try again.');
     }
   };
-  
-  // Direct API call to delete
+
   const handleDeleteTransaction = async (transactionId: number) => {
     try {
-      console.log("Deleting transaction:", transactionId);
-      // Direct API call
       await apiDeleteTransaction(transactionId);
-      
-      // Refresh details if a row is expanded
       if (expandedRow) {
         const details = await fetchTransactionDetails(expandedRow);
         if (details.length === 0) {
-          // If no transactions left, close the expanded row
           setExpandedRow(null);
         }
       }
-      
-      // Refresh summaries
       await fetchTransactionSummaries();
-      
-      // Close the editor
       setEditingTransaction(null);
-      
-      // Increment refresh trigger
       setRefreshTrigger(prev => prev + 1);
     } catch (err) {
-      console.error('Failed to delete transaction:', err);
       setError('Failed to delete transaction. Please try again.');
     }
   };
 
   const presetRanges = [
-    { 
-      label: 'Today', 
+    {
+      label: 'Today',
       onClick: () => {
         const today = format(new Date(), 'yyyy-MM-dd');
         onDateRangeChange({ startDate: today, endDate: today });
       }
     },
     {
-      label: 'Last 7 Days',
+      label: '7D',
       onClick: () => {
         const end = new Date();
         const start = subDays(end, 6);
@@ -204,7 +159,7 @@ const TransactionSummaryTable: React.FC<TransactionSummaryTableProps> = ({
       }
     },
     {
-      label: 'Last 30 Days',
+      label: '30D',
       onClick: () => {
         const end = new Date();
         const start = subDays(end, 29);
@@ -215,7 +170,7 @@ const TransactionSummaryTable: React.FC<TransactionSummaryTableProps> = ({
       }
     },
     {
-      label: 'This Month',
+      label: 'Month',
       onClick: () => {
         const now = new Date();
         onDateRangeChange({
@@ -233,60 +188,36 @@ const TransactionSummaryTable: React.FC<TransactionSummaryTableProps> = ({
     });
   };
 
-  // Get style for status badges
   const getStatusStyle = (status: string) => {
-    // Normalize status to uppercase for comparison
     const normalizedStatus = status?.toString().toUpperCase();
-    console.log('getStatusStyle received status:', status, 'normalized:', normalizedStatus);
-    
     switch (normalizedStatus) {
       case 'SUCCESSFUL':
-        return {
-          backgroundColor: '#059669',
-          color: 'white',
-          fontWeight: 'bold'
-        };
+        return 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20';
       case 'PARTIAL':
-        return {
-          backgroundColor: '#f59e0b',
-          color: 'black',
-          fontWeight: 'bold'
-        };
+        return 'bg-orange-500/15 text-orange-400 border border-orange-500/20';
       case 'PENDING':
-        return {
-          backgroundColor: '#ef4444',
-          color: 'white',
-          fontWeight: 'bold'
-        };
+        return 'bg-red-500/15 text-red-400 border border-red-500/20';
       default:
-        return {
-          backgroundColor: '#6B7280', 
-          color: 'white',
-          fontWeight: 'bold'
-        };
+        return 'bg-white/[0.04] text-white/50 border border-white/[0.06]';
     }
   };
 
   const renderTransactionDetails = (summary: TransactionSummary) => {
-    console.log('Rendering details for:', summary.booking_id);
-    
     const details = transactionDetails[summary.booking_id];
-    
+
     if (!details || details.length === 0) {
       return (
-        <div className="py-4 px-6 bg-gray-800">
-          <p className="text-center text-gray-400">No transaction details available</p>
+        <div className="py-4 px-6 bg-white/[0.02]">
+          <p className="text-center text-white/25">No transaction details available</p>
         </div>
       );
     }
-    
-    // If we're editing a transaction, show the form instead of the table
+
     if (editingTransaction && details.some(t => t.id === editingTransaction.id)) {
       return (
-        <div className="py-4 px-6 bg-gray-800">
-          {/* Fixed width for mobile view */}
-          <div className="max-w-full overflow-x-hidden"> 
-            <TransactionForm 
+        <div className="py-4 px-6 bg-white/[0.02]">
+          <div className="max-w-full overflow-x-hidden">
+            <TransactionForm
               editingTransaction={editingTransaction}
               onSubmit={handleSaveEdit}
               onDelete={handleDeleteTransaction}
@@ -296,66 +227,63 @@ const TransactionSummaryTable: React.FC<TransactionSummaryTableProps> = ({
         </div>
       );
     }
-  
-    // Otherwise show the transaction details in card layout
+
     return (
-      <div className="py-4 px-6 bg-gray-800">
-        <h4 className="text-lg font-semibold mb-4 text-white">Transaction History</h4>
+      <div className="py-4 px-6 bg-white/[0.02]">
+        <h4 className="text-sm font-medium text-white/60 mb-4 uppercase tracking-wider">Transaction History</h4>
         <div className="space-y-3">
           {details.map((transaction) => (
-            <div key={transaction.id} className="bg-black/20 border border-gray-700 rounded-lg p-3">
+            <div key={transaction.id} className="glass-card rounded-lg p-3">
               <div className="grid grid-cols-2 gap-3">
-                {/* Left Column */}
                 <div className="space-y-2">
                   <div>
-                    <div className="text-xs text-gray-400">Date</div>
-                    <div className="text-sm text-gray-300">
+                    <div className="text-[10px] text-white/25 uppercase tracking-wider">Date</div>
+                    <div className="text-sm text-white/70">
                       {format(new Date(transaction.created_at), 'MMM dd, yyyy')}
                     </div>
-                    <div className="text-xs text-gray-400">
+                    <div className="text-[10px] text-white/25">
                       {format(new Date(transaction.created_at), 'HH:mm')}
                     </div>
                   </div>
                   <div>
-                    <div className="text-xs text-gray-400">Type</div>
-                    <span className={`inline-block px-2 py-1 rounded text-xs ${
-                      transaction.transaction_type === 'BOOKING_PAYMENT' ? 'bg-red-500 text-white' :
-                      transaction.transaction_type === 'SLOT_PAYMENT' ? 'bg-green-500 text-white' :
-                      transaction.transaction_type === 'DISCOUNT' ? 'bg-yellow-500 text-white' :
-                      'bg-red-500 text-white'
+                    <div className="text-[10px] text-white/25 uppercase tracking-wider">Type</div>
+                    <span className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-medium ${
+                      transaction.transaction_type === 'BOOKING_PAYMENT' ? 'bg-red-500/15 text-red-400' :
+                      transaction.transaction_type === 'SLOT_PAYMENT' ? 'bg-emerald-500/15 text-emerald-400' :
+                      transaction.transaction_type === 'DISCOUNT' ? 'bg-orange-500/15 text-orange-400' :
+                      'bg-red-500/15 text-red-400'
                     }`}>
                       {transaction.transaction_type.replace('_', ' ')}
                     </span>
                   </div>
                   <div>
-                    <div className="text-xs text-gray-400">Method</div>
-                    <span className={`inline-block px-2 py-1 rounded text-xs ${
-                      transaction.payment_method === 'CASH' ? 'bg-green-500 text-white' :
-                      transaction.payment_method === 'BKASH' ? 'bg-pink-500 text-white' :
-                      transaction.payment_method === 'NAGAD' ? 'bg-orange-500 text-white' :
-                      transaction.payment_method === 'CARD' ? 'bg-blue-500 text-white' :
-                      transaction.transaction_type === 'DISCOUNT' ? 'bg-yellow-500 text-white' :
-                      'bg-gray-600 text-white'
+                    <div className="text-[10px] text-white/25 uppercase tracking-wider">Method</div>
+                    <span className={`inline-block px-2 py-0.5 rounded-md text-[10px] font-medium ${
+                      transaction.payment_method === 'CASH' ? 'bg-emerald-500/15 text-emerald-400' :
+                      transaction.payment_method === 'BKASH' ? 'bg-pink-500/15 text-pink-400' :
+                      transaction.payment_method === 'NAGAD' ? 'bg-orange-500/15 text-orange-400' :
+                      transaction.payment_method === 'CARD' ? 'bg-blue-500/15 text-blue-400' :
+                      transaction.transaction_type === 'DISCOUNT' ? 'bg-orange-500/15 text-orange-400' :
+                      'bg-white/[0.04] text-white/50'
                     }`}>
                       {transaction.payment_method || (transaction.transaction_type === 'DISCOUNT' ? 'Discount' : 'Other')}
                     </span>
                   </div>
                 </div>
 
-                {/* Right Column */}
                 <div className="space-y-2 text-right">
                   <div>
-                    <div className="text-xs text-gray-400">Amount</div>
-                    <div className="text-lg font-bold text-white">${transaction.amount.toFixed(2)}</div>
+                    <div className="text-[10px] text-white/25 uppercase tracking-wider">Amount</div>
+                    <div className="text-lg font-bold text-white">৳{transaction.amount.toFixed(2)}</div>
                   </div>
                   <div>
-                    <div className="text-xs text-gray-400">User</div>
-                    <div className="text-sm text-gray-300">{transaction.creator || "Admin"}</div>
+                    <div className="text-[10px] text-white/25 uppercase tracking-wider">User</div>
+                    <div className="text-sm text-white/50">{transaction.creator || "Admin"}</div>
                   </div>
                   <div>
                     <button
                       onClick={() => handleEditClick(transaction)}
-                      className="w-full bg-orange-600 text-white px-3 py-1.5 rounded text-sm hover:bg-orange-700 transition"
+                      className="btn-glow w-full bg-orange-600 text-white px-3 py-1.5 rounded-lg text-xs transition-all duration-300"
                     >
                       Edit
                     </button>
@@ -369,43 +297,39 @@ const TransactionSummaryTable: React.FC<TransactionSummaryTableProps> = ({
     );
   };
 
-  // Filter summaries based on booking ID if provided
-  const filteredSummaries = filterByBookingId 
+  const filteredSummaries = filterByBookingId
     ? summaries.filter(summary => summary.booking_id === filterByBookingId)
     : summaries;
 
-  // Main render function
   return (
     <div className="space-y-4">
       {error && (
-        <div className="bg-red-500 bg-opacity-10 border border-red-500 text-red-500 p-4 rounded">
+        <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-4 rounded-xl">
           {error}
         </div>
       )}
-      
-      {/* Show filter notice when filtering by booking ID */}
+
       {filterByBookingId && (
-        <div className="bg-blue-800 bg-opacity-20 border border-blue-600 rounded-lg p-4">
+        <div className="glass-card rounded-xl p-4">
           <div className="flex items-center space-x-3">
             <svg className="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
             </svg>
-            <span className="text-blue-300">
+            <span className="text-blue-300 text-sm">
               Showing transactions for Booking ID: {filterByBookingId}
             </span>
           </div>
         </div>
       )}
-      
-      {/* Date range controls - hide when filtering by specific booking */}
+
       {!filterByBookingId && (
-        <div className="flex flex-wrap items-center gap-4 bg-gray-800 p-4 rounded-lg">
+        <div className="flex flex-wrap items-center gap-4 glass-card p-4 rounded-xl">
           <div className="flex flex-wrap items-center gap-2">
             {presetRanges.map((range) => (
               <button
                 key={range.label}
                 onClick={range.onClick}
-                className="px-3 py-1 bg-black/20 border border-gray-700 text-gray-300 rounded hover:bg-gray-700 transition duration-300"
+                className="px-3 py-1.5 bg-white/[0.03] border border-white/[0.06] text-white/40 rounded-lg hover:bg-white/[0.06] hover:text-white/60 transition-all duration-200 text-xs"
               >
                 {range.label}
               </button>
@@ -417,110 +341,99 @@ const TransactionSummaryTable: React.FC<TransactionSummaryTableProps> = ({
               type="date"
               value={currentDateRange.startDate}
               onChange={(e) => handleDateChange('startDate', e.target.value)}
-              className="p-2 rounded bg-black/20 border border-gray-700 text-white focus:border-orange-500 focus:outline-none transition-colors"
+              className="glass-input p-2 rounded-lg text-sm"
             />
-            <span className="text-gray-400">to</span>
+            <span className="text-white/20 text-sm">to</span>
             <input
               type="date"
               value={currentDateRange.endDate}
               onChange={(e) => handleDateChange('endDate', e.target.value)}
-              className="p-2 rounded bg-black/20 border border-gray-700 text-white focus:border-orange-500 focus:outline-none transition-colors"
+              className="glass-input p-2 rounded-lg text-sm"
             />
           </div>
         </div>
       )}
 
       {isLoading && !expandedRow && filteredSummaries.length === 0 ? (
-        <div className="text-center text-gray-300 py-8">Loading...</div>
+        <div className="text-center text-white/30 py-8">Loading...</div>
       ) : (
         <div className="overflow-x-auto">
-          {/* Mobile-friendly table with responsive design */}
           <div className="w-full">
             {filteredSummaries.length === 0 ? (
-              <div className="text-center text-gray-300 py-8">
-                {filterByBookingId ? 
-                  'No transaction data found for this booking' : 
+              <div className="text-center text-white/30 py-8">
+                {filterByBookingId ?
+                  'No transaction data found for this booking' :
                   'No transaction data found'
                 }
               </div>
             ) : (
               filteredSummaries.map((summary) => (
-                <div 
+                <div
                   key={`${summary.booking_date}_${summary.slot}`}
-                  className="mb-4 bg-black/40 border border-gray-800 rounded-lg overflow-hidden"
+                  className="mb-4 glass-card rounded-xl overflow-hidden"
                 >
-                  {/* Summary card */}
-                  <div className="p-4 border-b border-gray-700">
+                  <div className="p-4 border-b border-white/[0.06]">
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-2">
                       <div className="mb-2 sm:mb-0">
                         <div className="font-medium text-white">{summary.slot}</div>
-                        <div className="text-xs text-gray-400">
+                        <div className="text-xs text-white/25">
                           {format(new Date(summary.booking_date), 'MMM dd, yyyy')}
                         </div>
                       </div>
-                      
-                      <div className="flex items-center space-x-2">
-                        {/* Use inline styles for the status badge */}
-                        <span 
-                          style={getStatusStyle(summary.status)}
-                          className="px-2 py-1 rounded-full text-xs font-bold"
-                        >
-                          {summary.status}
-                        </span>
-                      </div>
+                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-semibold ${getStatusStyle(summary.status)}`}>
+                        {summary.status}
+                      </span>
                     </div>
-                    
+
                     <div className="grid grid-cols-2 gap-4 mb-2">
                       <div>
-                        <div className="text-xs text-gray-400">Last Transaction</div>
+                        <div className="text-[10px] text-white/25 uppercase tracking-wider">Last Transaction</div>
                         <div>
                           {summary.last_payment_date ? (
-                            <div className="text-sm text-white">{format(new Date(summary.last_payment_date), 'MMM dd, yyyy')}</div>
+                            <div className="text-sm text-white/70">{format(new Date(summary.last_payment_date), 'MMM dd, yyyy')}</div>
                           ) : (
-                            <div className="text-sm text-gray-400">N/A</div>
+                            <div className="text-sm text-white/20">N/A</div>
                           )}
                         </div>
                       </div>
                       <div>
-                        <div className="text-xs text-gray-400">First Payment</div>
+                        <div className="text-[10px] text-white/25 uppercase tracking-wider">First Payment</div>
                         <div>
                           {summary.booking_payment_date ? (
-                            <div className="text-sm text-white">{format(new Date(summary.booking_payment_date), 'MMM dd')}</div>
+                            <div className="text-sm text-white/70">{format(new Date(summary.booking_payment_date), 'MMM dd')}</div>
                           ) : (
-                            <div className="text-sm text-gray-400">N/A</div>
+                            <div className="text-sm text-white/20">N/A</div>
                           )}
                         </div>
                       </div>
                     </div>
-                    
+
                     <div className="grid grid-cols-2 gap-4 mb-2">
                       <div>
-                        <div className="text-xs text-gray-400">Total Paid</div>
-                        <div className="text-lg font-semibold text-white">${summary.total_paid.toFixed(2)}</div>
+                        <div className="text-[10px] text-white/25 uppercase tracking-wider">Total Paid</div>
+                        <div className="text-lg font-semibold text-white">৳{summary.total_paid.toFixed(2)}</div>
                       </div>
                       <div>
-                        <div className="text-xs text-gray-400">Left Over</div>
-                        <div className="text-lg font-semibold text-white">${summary.leftover.toFixed(2)}</div>
+                        <div className="text-[10px] text-white/25 uppercase tracking-wider">Left Over</div>
+                        <div className="text-lg font-semibold text-white">৳{summary.leftover.toFixed(2)}</div>
                       </div>
                     </div>
-                    
-                    {/* Action button at bottom of card */}
+
                     <div className="mt-3">
                       <button
                         onClick={() => toggleRowExpansion(summary.booking_id)}
-                        className="w-full bg-primary text-white py-2 rounded-md hover:bg-primary-hover transition duration-300"
+                        className="w-full btn-glow bg-orange-600 text-white py-2 rounded-lg transition-all duration-300 text-sm font-medium"
                       >
                         {expandedRow === summary.booking_id ? 'Hide Details' : 'Show Details'}
                       </button>
                     </div>
                   </div>
-                  
-                  {/* Details section */}
+
                   {expandedRow === summary.booking_id && (
                     <div>
                       {isLoading && !transactionDetails[summary.booking_id] ? (
-                        <div className="py-4 px-6 bg-gray-800 text-center">
-                          <div className="text-gray-300">Loading details...</div>
+                        <div className="py-4 px-6 bg-white/[0.02] text-center">
+                          <div className="text-white/30">Loading details...</div>
                         </div>
                       ) : (
                         renderTransactionDetails(summary)

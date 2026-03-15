@@ -186,68 +186,68 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
   const getStatusBadge = (status: string) => {
     switch (status?.toUpperCase()) {
       case 'SUCCESSFUL':
-        return <span className="px-2 py-0.5 text-xs font-medium rounded bg-green-600/20 text-green-400 border border-green-600/30">PAID</span>;
+        return <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">PAID</span>;
       case 'PARTIAL':
-        return <span className="px-2 py-0.5 text-xs font-medium rounded bg-orange-600/20 text-orange-400 border border-orange-600/30">PARTIAL</span>;
+        return <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-orange-500/15 text-orange-400 border border-orange-500/20">PARTIAL</span>;
       default:
-        return <span className="px-2 py-0.5 text-xs font-medium rounded bg-red-600/20 text-red-400 border border-red-600/30">UNPAID</span>;
+        return <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-red-500/15 text-red-400 border border-red-500/20">UNPAID</span>;
     }
   };
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
       <div className="flex min-h-screen items-start justify-center p-4 pt-10 sm:items-center sm:pt-4">
-        <div className="fixed inset-0 bg-black/70" onClick={onClose} />
+        <div className="fixed inset-0 bg-black/70 modal-backdrop" onClick={onClose} />
 
-        <div className="relative w-full max-w-md bg-gray-900 border border-gray-800 rounded-lg shadow-xl">
+        <div className="relative w-full max-w-md glass-card rounded-2xl shadow-2xl glow-orange animate-scaleIn border-white/[0.08]">
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
+          <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.06]">
             {paymentSummary ? (
               <div>
                 <div className="flex items-center gap-2">
-                  <h2 className="text-base font-medium text-white">{paymentSummary.booking.name}</h2>
+                  <h2 className="text-base font-semibold text-white">{paymentSummary.booking.name}</h2>
                   {getStatusBadge(paymentSummary.summary.status)}
                 </div>
-                <p className="text-xs text-gray-500 mt-0.5">
+                <p className="text-xs text-white/30 mt-0.5">
                   {format(new Date(paymentSummary.booking.booking_date), 'MMM dd, yyyy')} · {paymentSummary.booking.time_slot}
                   {paymentSummary.booking.created_by && (
-                    <span className="ml-2 text-gray-600">by {paymentSummary.booking.created_by}</span>
+                    <span className="ml-2 text-white/15">by {paymentSummary.booking.created_by}</span>
                   )}
                 </p>
               </div>
             ) : (
-              <div className="text-white text-sm">Loading...</div>
+              <div className="text-white/50 text-sm">Loading...</div>
             )}
-            <button onClick={onClose} className="text-gray-500 hover:text-white transition-colors">
+            <button onClick={onClose} className="text-white/30 hover:text-white transition-colors p-1 rounded-lg hover:bg-white/[0.05]">
               <XMarkIcon className="h-5 w-5" />
             </button>
           </div>
 
           {/* Content */}
-          <div className="p-4 max-h-[78vh] overflow-y-auto">
+          <div className="p-5 max-h-[78vh] overflow-y-auto">
             {isLoading ? (
               <div className="flex items-center justify-center py-8">
-                <div className="text-gray-500 text-sm">Loading...</div>
+                <div className="text-white/30 text-sm">Loading...</div>
               </div>
             ) : error && !paymentSummary ? (
-              <div className="p-3 bg-red-500/10 border border-red-500/20 rounded text-red-400 text-sm">
+              <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
                 {error}
               </div>
             ) : paymentSummary ? (
               <div className="space-y-4">
                 {/* Payment Summary */}
                 <div className="grid grid-cols-3 gap-2 text-center">
-                  <div className="bg-gray-800/50 rounded px-2 py-2.5">
-                    <div className="text-[10px] text-gray-500 uppercase tracking-wide">Total</div>
-                    <div className="text-base font-medium text-white">৳{paymentSummary.summary.total_price.toLocaleString()}</div>
+                  <div className="bg-white/[0.03] rounded-xl px-2 py-3">
+                    <div className="text-[10px] text-white/25 uppercase tracking-wider">Total</div>
+                    <div className="text-base font-semibold text-white mt-0.5">৳{paymentSummary.summary.total_price.toLocaleString()}</div>
                   </div>
-                  <div className="bg-gray-800/50 rounded px-2 py-2.5">
-                    <div className="text-[10px] text-gray-500 uppercase tracking-wide">Paid</div>
-                    <div className="text-base font-medium text-green-400">৳{paymentSummary.summary.total_paid.toLocaleString()}</div>
+                  <div className="bg-white/[0.03] rounded-xl px-2 py-3">
+                    <div className="text-[10px] text-white/25 uppercase tracking-wider">Paid</div>
+                    <div className="text-base font-semibold text-emerald-400 mt-0.5">৳{paymentSummary.summary.total_paid.toLocaleString()}</div>
                   </div>
-                  <div className="bg-gray-800/50 rounded px-2 py-2.5">
-                    <div className="text-[10px] text-gray-500 uppercase tracking-wide">Due</div>
-                    <div className={`text-base font-medium ${paymentSummary.summary.leftover > 0 ? 'text-red-400' : 'text-green-400'}`}>
+                  <div className="bg-white/[0.03] rounded-xl px-2 py-3">
+                    <div className="text-[10px] text-white/25 uppercase tracking-wider">Due</div>
+                    <div className={`text-base font-semibold mt-0.5 ${paymentSummary.summary.leftover > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
                       ৳{paymentSummary.summary.leftover.toLocaleString()}
                     </div>
                   </div>
@@ -255,7 +255,7 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
 
                 {/* Error Message */}
                 {error && (
-                  <div className="p-2 bg-red-500/10 border border-red-500/20 rounded text-red-400 text-xs">
+                  <div className="p-2 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-xs">
                     {error}
                   </div>
                 )}
@@ -263,17 +263,17 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
                 {/* Add Payment Form */}
                 <form onSubmit={handleSubmitTransaction} className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <div className="text-xs font-medium text-gray-400">
+                    <div className="text-[10px] font-medium text-white/30 uppercase tracking-wider">
                       {editingTransaction ? 'Edit Payment' : 'Add Payment'}
                     </div>
                     <button
                       type="button"
                       onClick={handleToggleDiscount}
                       disabled={isSubmitting}
-                      className={`px-2 py-0.5 text-[10px] rounded border transition-colors ${
+                      className={`px-2 py-0.5 text-[10px] rounded-md border transition-all duration-200 ${
                         isDiscountMode
-                          ? 'bg-orange-600/20 text-orange-300 border-orange-600/40'
-                          : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-white'
+                          ? 'bg-orange-500/15 text-orange-300 border-orange-500/30'
+                          : 'bg-white/[0.02] text-white/30 border-white/[0.06] hover:text-white/50'
                       }`}
                     >
                       Discount
@@ -282,34 +282,34 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
                   {/* Type Selection - Button Group */}
                   {!isDiscountMode ? (
                     <div className="flex gap-2">
-                      <div className="flex rounded overflow-hidden border border-gray-700">
+                      <div className="flex rounded-lg overflow-hidden border border-white/[0.06]">
                         {TRANSACTION_TYPES.map((type) => (
                           <button
                             key={type}
                             type="button"
                             onClick={() => setTransactionType(type)}
                             disabled={isSubmitting}
-                            className={`px-3 py-1.5 text-xs transition-colors ${
+                            className={`px-3 py-1.5 text-xs transition-all duration-200 ${
                               transactionType === type
                                 ? 'bg-orange-600 text-white'
-                                : 'bg-gray-800 text-gray-400 hover:text-white'
+                                : 'bg-white/[0.02] text-white/30 hover:text-white/50'
                             }`}
                           >
                             {type === 'BOOKING_PAYMENT' ? 'Booking' : 'Slot'}
                           </button>
                         ))}
                       </div>
-                      <div className="flex rounded overflow-hidden border border-gray-700">
+                      <div className="flex rounded-lg overflow-hidden border border-white/[0.06]">
                         {PAYMENT_METHODS.map((method) => (
                           <button
                             key={method}
                             type="button"
                             onClick={() => setPaymentMethod(method)}
                             disabled={isSubmitting}
-                            className={`px-3 py-1.5 text-xs transition-colors ${
+                            className={`px-3 py-1.5 text-xs transition-all duration-200 ${
                               paymentMethod === method
-                                ? method === 'BKASH' ? 'bg-pink-600 text-white' : 'bg-green-600 text-white'
-                                : 'bg-gray-800 text-gray-400 hover:text-white'
+                                ? method === 'BKASH' ? 'bg-pink-600 text-white' : 'bg-emerald-600 text-white'
+                                : 'bg-white/[0.02] text-white/30 hover:text-white/50'
                             }`}
                           >
                             {method === 'BKASH' ? 'bKash' : 'Cash'}
@@ -322,7 +322,7 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
                           value={amount}
                           onChange={(e) => setAmount(e.target.value)}
                           placeholder="Amount"
-                          className="w-full px-2 py-1.5 text-sm rounded bg-gray-800 border border-gray-700 text-white focus:border-orange-500 focus:outline-none"
+                          className="glass-input w-full px-2 py-1.5 text-sm rounded-lg"
                           required
                           min="0"
                           step="1"
@@ -332,7 +332,7 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
                           <button
                             type="button"
                             onClick={handleAutoFillAmount}
-                            className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-orange-400 hover:text-orange-300 bg-gray-800 px-1"
+                            className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-orange-400 hover:text-orange-300 px-1"
                           >
                             ৳{paymentSummary.summary.leftover}
                           </button>
@@ -341,7 +341,7 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
                     </div>
                   ) : (
                     <div className="flex gap-2">
-                      <div className="px-3 py-1.5 text-xs rounded border border-orange-600/40 bg-orange-600/10 text-orange-300">
+                      <div className="px-3 py-1.5 text-xs rounded-lg border border-orange-500/30 bg-orange-500/10 text-orange-300">
                         Discount
                       </div>
                       <div className="relative flex-1">
@@ -350,7 +350,7 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
                           value={amount}
                           onChange={(e) => setAmount(e.target.value)}
                           placeholder="Discount amount"
-                          className="w-full px-2 py-1.5 text-sm rounded bg-gray-800 border border-gray-700 text-white focus:border-orange-500 focus:outline-none"
+                          className="glass-input w-full px-2 py-1.5 text-sm rounded-lg"
                           required
                           min="0"
                           step="1"
@@ -360,7 +360,7 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
                           <button
                             type="button"
                             onClick={handleAutoFillAmount}
-                            className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-orange-400 hover:text-orange-300 bg-gray-800 px-1"
+                            className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-orange-400 hover:text-orange-300 px-1"
                           >
                             ৳{paymentSummary.summary.leftover}
                           </button>
@@ -374,7 +374,7 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
                         <button
                           type="button"
                           onClick={() => handleDeleteTransaction(editingTransaction.id)}
-                          className="px-2 py-1 text-xs bg-red-600/20 text-red-400 border border-red-600/30 rounded hover:bg-red-600/30 transition-colors"
+                          className="px-2 py-1 text-xs bg-red-500/10 text-red-400 border border-red-500/20 rounded-lg hover:bg-red-500/15 transition-all duration-200"
                           disabled={isSubmitting}
                         >
                           Delete
@@ -382,7 +382,7 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
                         <button
                           type="button"
                           onClick={handleCancelEdit}
-                          className="px-2 py-1 text-xs bg-gray-700 text-gray-300 rounded hover:bg-gray-600 transition-colors"
+                          className="px-2 py-1 text-xs bg-white/[0.03] text-white/40 rounded-lg hover:bg-white/[0.06] transition-all duration-200"
                           disabled={isSubmitting}
                         >
                           Cancel
@@ -391,7 +391,7 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
                     )}
                     <button
                       type="submit"
-                      className="ml-auto px-3 py-1 text-xs bg-orange-600 text-white rounded hover:bg-orange-500 transition-colors disabled:opacity-50"
+                      className="btn-glow ml-auto px-3 py-1 text-xs bg-orange-600 text-white rounded-lg transition-all duration-300 disabled:opacity-50"
                       disabled={isSubmitting}
                     >
                       {isSubmitting ? 'Saving...' : editingTransaction ? 'Update' : 'Add Payment'}
@@ -400,10 +400,10 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
                 </form>
 
                 {/* Payment History */}
-                <div className="pt-3 border-t border-gray-800">
-                  <div className="text-xs font-medium text-gray-400 mb-2">Payment History</div>
+                <div className="pt-3 border-t border-white/[0.06]">
+                  <div className="text-[10px] font-medium text-white/30 uppercase tracking-wider mb-2">Payment History</div>
                   {paymentSummary.transactions.length === 0 ? (
-                    <p className="text-gray-500 text-xs text-center py-4">No payments yet</p>
+                    <p className="text-white/20 text-xs text-center py-4">No payments yet</p>
                   ) : (
                     <div className="space-y-1.5">
                       {paymentSummary.transactions.map((transaction) => {
@@ -428,10 +428,10 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
                           <div
                             key={transaction.id}
                             onClick={() => setEditingTransaction(transaction)}
-                            className={`flex items-center justify-between p-2 rounded cursor-pointer transition-colors ${
+                            className={`flex items-center justify-between p-2.5 rounded-lg cursor-pointer transition-all duration-200 ${
                               editingTransaction?.id === transaction.id
-                                ? 'bg-orange-600/10 border border-orange-600/30'
-                                : 'bg-gray-800/50 border border-gray-800 hover:border-gray-700'
+                                ? 'bg-orange-500/10 border border-orange-500/20'
+                                : 'bg-white/[0.02] border border-white/[0.04] hover:border-white/10 hover:bg-white/[0.04]'
                             }`}
                           >
                             <div>
@@ -441,22 +441,22 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
                                     isDiscount || isAdjustment || !transaction.payment_method
                                       ? 'text-orange-300'
                                       : transaction.payment_method === 'CASH'
-                                      ? 'text-gray-300'
+                                      ? 'text-white/60'
                                       : 'text-pink-400'
                                   }`}
                                 >
                                   {paymentLabel}
                                 </span>
-                                <span className="text-[10px] text-gray-600">·</span>
-                                <span className="text-[10px] text-gray-500">
+                                <span className="text-[10px] text-white/15">·</span>
+                                <span className="text-[10px] text-white/25">
                                   {typeLabel}
                                 </span>
                               </div>
-                              <div className="text-[10px] text-gray-500 mt-0.5">
+                              <div className="text-[10px] text-white/20 mt-0.5">
                                 {format(new Date(transaction.created_at), 'MMM dd, HH:mm')}
                               </div>
                             </div>
-                            <div className="text-sm text-white font-medium">৳{transaction.amount.toLocaleString()}</div>
+                            <div className="text-sm text-white font-semibold">৳{transaction.amount.toLocaleString()}</div>
                           </div>
                         );
                       })}

@@ -90,9 +90,9 @@ export default function DashboardPage() {
   const CustomTooltip = ({ active, payload, label, valuePrefix = '', valueSuffix = '' }: any) => {
     if (active && payload && payload.length) {
       return (
-        <div className="bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 shadow-lg">
-          <p className="text-gray-400 text-xs">{label}</p>
-          <p className="text-white font-medium">
+        <div className="glass-card rounded-lg px-3 py-2 shadow-2xl border border-white/10">
+          <p className="text-white/40 text-xs">{label}</p>
+          <p className="text-white font-semibold text-sm">
             {valuePrefix}{typeof payload[0].value === 'number' ? payload[0].value.toLocaleString() : payload[0].value}{valueSuffix}
           </p>
         </div>
@@ -118,7 +118,7 @@ export default function DashboardPage() {
               />
             </div>
           </div>
-          <p className="mt-3 text-gray-400 text-sm">Loading dashboard...</p>
+          <p className="mt-3 text-white/30 text-sm">Loading dashboard...</p>
         </div>
       </AdminLayout>
     );
@@ -128,7 +128,7 @@ export default function DashboardPage() {
     return (
       <AdminLayout>
         <div className="flex justify-center items-center h-64">
-          <div className="text-white">Error loading dashboard data</div>
+          <div className="text-white/50">Error loading dashboard data</div>
         </div>
       </AdminLayout>
     );
@@ -145,12 +145,6 @@ export default function DashboardPage() {
     bookings: d.bookings,
   }));
 
-  // Status data for pie chart
-  const statusData = [
-    { name: 'Completed', value: dashboardData.completed_transactions, color: COLORS.success },
-    { name: 'Pending', value: dashboardData.pending_transactions, color: COLORS.danger },
-  ];
-
   // Payment breakdown for bar chart
   const paymentChartData = dashboardData.payment_breakdown.map(p => ({
     method: p.method,
@@ -162,78 +156,74 @@ export default function DashboardPage() {
     <AdminLayout>
       <div className="container mx-auto p-4 space-y-6">
         {/* Header with Quick Actions */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-2 animate-fadeInUp stagger-1">
           <div>
-            <h2 className="text-3xl font-bold text-white mb-2">Dashboard</h2>
-            <p className="text-gray-500">Last 30 days performance overview</p>
+            <h2 className="text-3xl font-bold text-white mb-1 tracking-tight">Dashboard</h2>
+            <p className="text-white/30 text-sm">Last 30 days performance overview</p>
           </div>
           <div className="flex gap-3">
-            <Link href="/bookings" className="bg-primary hover:bg-primary-dark text-white px-4 py-2 rounded-md flex items-center gap-2 transition-all duration-200 hover:shadow-lg">
+            <Link href="/bookings" className="btn-glow bg-orange-600 hover:bg-orange-500 text-white px-4 py-2.5 rounded-xl flex items-center gap-2 text-sm font-medium transition-all duration-300">
               <PlusIcon className="h-4 w-4" />
               New Booking
             </Link>
-            <Link href="/transactions" className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-md flex items-center gap-2 transition-all duration-200 hover:shadow-lg">
+            <Link href="/financial-journal" className="glass-card hover:bg-white/[0.06] text-white/70 hover:text-white px-4 py-2.5 rounded-xl flex items-center gap-2 text-sm font-medium transition-all duration-300">
               <BanknotesIcon className="h-4 w-4" />
-              Transaction
+              Journal
             </Link>
           </div>
         </div>
 
         {/* Key Metrics Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 animate-fadeInUp stagger-2">
           <DashboardCard
             title="Today"
             value={dashboardData.todays_bookings.toString()}
-            icon={<CalendarIcon className="h-6 w-6 text-primary" />}
-            bgColor="bg-gray-900/50 border-gray-800"
+            icon={<CalendarIcon className="h-5 w-5" />}
           />
           <DashboardCard
             title="This Month"
             value={dashboardData.bookings_this_month.toString()}
-            icon={<UserGroupIcon className="h-6 w-6 text-success" />}
-            bgColor="bg-gray-900/50 border-gray-800"
+            icon={<UserGroupIcon className="h-5 w-5" />}
           />
           <DashboardCard
             title="Revenue (30d)"
             value={formatCurrency(dashboardData.revenue_last_30_days)}
             change={dashboardData.revenue_change}
-            icon={<CurrencyDollarIcon className="h-6 w-6 text-primary" />}
-            bgColor="bg-gray-900/50 border-gray-800"
+            icon={<CurrencyDollarIcon className="h-5 w-5" />}
           />
           <DashboardCard
             title="Avg. Value"
             value={formatCurrency(dashboardData.avg_booking_value)}
-            icon={<ArrowTrendingUpIcon className="h-6 w-6 text-success" />}
-            bgColor="bg-gray-900/50 border-gray-800"
+            icon={<ArrowTrendingUpIcon className="h-5 w-5" />}
           />
         </div>
 
-        {/* Charts Section - Line Charts with Gradient */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {/* Revenue Trend - Area Chart */}
-          <div className="bg-black/40 border border-gray-800 rounded-lg p-6">
-            <h3 className="text-lg font-medium text-white mb-4">Revenue Trend (30 Days)</h3>
+        {/* Charts Section */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 animate-fadeInUp stagger-3">
+          {/* Revenue Trend */}
+          <div className="glass-card rounded-xl p-6">
+            <h3 className="text-sm font-medium text-white/60 mb-4 uppercase tracking-wider">Revenue Trend</h3>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={revenueChartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id="revenueGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor={COLORS.primary} stopOpacity={0.4}/>
+                      <stop offset="5%" stopColor={COLORS.primary} stopOpacity={0.3}/>
                       <stop offset="95%" stopColor={COLORS.primary} stopOpacity={0}/>
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke={COLORS.gray[800]} vertical={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
                   <XAxis
                     dataKey="date"
-                    stroke={COLORS.gray[500]}
-                    tick={{ fill: COLORS.gray[500], fontSize: 10 }}
+                    stroke="transparent"
+                    tick={{ fill: 'rgba(255,255,255,0.25)', fontSize: 10 }}
                     tickLine={false}
-                    axisLine={{ stroke: COLORS.gray[700] }}
+                    axisLine={false}
                     interval={4}
                   />
                   <YAxis
-                    stroke={COLORS.gray[500]}
-                    tick={{ fill: COLORS.gray[500], fontSize: 10 }}
+                    stroke="transparent"
+                    tick={{ fill: 'rgba(255,255,255,0.25)', fontSize: 10 }}
                     tickLine={false}
                     axisLine={false}
                     tickFormatter={(value) => `৳${value >= 1000 ? (value/1000).toFixed(0) + 'k' : value}`}
@@ -251,30 +241,30 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Bookings Trend - Area Chart */}
-          <div className="bg-black/40 border border-gray-800 rounded-lg p-6">
-            <h3 className="text-lg font-medium text-white mb-4">Booking Trend (30 Days)</h3>
+          {/* Bookings Trend */}
+          <div className="glass-card rounded-xl p-6">
+            <h3 className="text-sm font-medium text-white/60 mb-4 uppercase tracking-wider">Booking Trend</h3>
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={bookingsChartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id="bookingsGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor={COLORS.success} stopOpacity={0.4}/>
+                      <stop offset="5%" stopColor={COLORS.success} stopOpacity={0.3}/>
                       <stop offset="95%" stopColor={COLORS.success} stopOpacity={0}/>
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke={COLORS.gray[800]} vertical={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
                   <XAxis
                     dataKey="date"
-                    stroke={COLORS.gray[500]}
-                    tick={{ fill: COLORS.gray[500], fontSize: 10 }}
+                    stroke="transparent"
+                    tick={{ fill: 'rgba(255,255,255,0.25)', fontSize: 10 }}
                     tickLine={false}
-                    axisLine={{ stroke: COLORS.gray[700] }}
+                    axisLine={false}
                     interval={4}
                   />
                   <YAxis
-                    stroke={COLORS.gray[500]}
-                    tick={{ fill: COLORS.gray[500], fontSize: 10 }}
+                    stroke="transparent"
+                    tick={{ fill: 'rgba(255,255,255,0.25)', fontSize: 10 }}
                     tickLine={false}
                     axisLine={false}
                   />
@@ -293,10 +283,10 @@ export default function DashboardPage() {
         </div>
 
         {/* Analytics Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {/* Popular Time Slots - Minimalistic Bars */}
-          <div className="bg-black/40 border border-gray-800 rounded-lg p-6">
-            <h3 className="text-lg font-medium text-white mb-6">Popular Slots</h3>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 animate-fadeInUp stagger-4">
+          {/* Popular Time Slots */}
+          <div className="glass-card rounded-xl p-6">
+            <h3 className="text-sm font-medium text-white/60 mb-6 uppercase tracking-wider">Popular Slots</h3>
             {dashboardData.popular_time_slots.length > 0 ? (
               <div className="space-y-4">
                 {dashboardData.popular_time_slots
@@ -305,7 +295,6 @@ export default function DashboardPage() {
                   .map((slot, index) => {
                     const maxCount = Math.max(...dashboardData.popular_time_slots.map(s => s.count));
                     const percentage = maxCount > 0 ? (slot.count / maxCount) * 100 : 0;
-                    // Compact time format: "9:00 PM - 10:30 PM" -> "9-10:30 PM"
                     const compactTime = slot.time_slot
                       .replace(':00', '')
                       .replace(' AM', '')
@@ -314,12 +303,12 @@ export default function DashboardPage() {
                     return (
                       <div key={index}>
                         <div className="flex justify-between items-center mb-1.5">
-                          <span className="text-xs text-gray-400">{compactTime}</span>
-                          <span className="text-xs font-medium text-white">{slot.count}</span>
+                          <span className="text-xs text-white/40">{compactTime}</span>
+                          <span className="text-xs font-semibold text-white">{slot.count}</span>
                         </div>
-                        <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                        <div className="h-1.5 bg-white/[0.04] rounded-full overflow-hidden">
                           <div
-                            className="h-full bg-orange-500 rounded-full transition-all duration-500"
+                            className="h-full bg-gradient-to-r from-orange-600 to-orange-400 rounded-full animate-progressFill"
                             style={{ width: `${percentage}%` }}
                           />
                         </div>
@@ -327,24 +316,23 @@ export default function DashboardPage() {
                     );
                   })}
 
-                {/* Total */}
-                <div className="pt-3 border-t border-gray-800">
+                <div className="pt-3 border-t border-white/[0.06]">
                   <div className="flex justify-between items-center">
-                    <span className="text-xs text-gray-500">Total Bookings</span>
-                    <span className="text-sm font-medium text-orange-400">
+                    <span className="text-xs text-white/25">Total Bookings</span>
+                    <span className="text-sm font-semibold text-gradient-orange">
                       {dashboardData.popular_time_slots.reduce((sum, s) => sum + s.count, 0)}
                     </span>
                   </div>
                 </div>
               </div>
             ) : (
-              <div className="text-gray-500 text-center py-8 text-sm">No data</div>
+              <div className="text-white/25 text-center py-8 text-sm">No data</div>
             )}
           </div>
 
-          {/* Payment Methods - Minimalistic Bars */}
-          <div className="bg-black/40 border border-gray-800 rounded-lg p-6">
-            <h3 className="text-lg font-medium text-white mb-6">Payments by Method</h3>
+          {/* Payment Methods */}
+          <div className="glass-card rounded-xl p-6">
+            <h3 className="text-sm font-medium text-white/60 mb-6 uppercase tracking-wider">Payments by Method</h3>
             {paymentChartData.length > 0 ? (
               <div className="space-y-5">
                 {paymentChartData.map((payment, index) => {
@@ -353,12 +341,12 @@ export default function DashboardPage() {
                   return (
                     <div key={index}>
                       <div className="flex justify-between items-center mb-2">
-                        <span className="text-sm text-gray-400">{payment.method}</span>
-                        <span className="text-sm font-medium text-white">৳{payment.amount.toLocaleString()}</span>
+                        <span className="text-sm text-white/50">{payment.method}</span>
+                        <span className="text-sm font-semibold text-white">৳{payment.amount.toLocaleString()}</span>
                       </div>
-                      <div className="h-2 bg-gray-800 rounded-full overflow-hidden">
+                      <div className="h-2 bg-white/[0.04] rounded-full overflow-hidden">
                         <div
-                          className="h-full rounded-full transition-all duration-500"
+                          className="h-full rounded-full animate-progressFill"
                           style={{
                             width: `${percentage}%`,
                             backgroundColor: payment.color
@@ -369,35 +357,33 @@ export default function DashboardPage() {
                   );
                 })}
 
-                {/* Total */}
-                <div className="pt-4 border-t border-gray-800">
+                <div className="pt-4 border-t border-white/[0.06]">
                   <div className="flex justify-between items-center">
-                    <span className="text-xs text-gray-500">Total Collected</span>
-                    <span className="text-sm font-medium text-orange-400">
+                    <span className="text-xs text-white/25">Total Collected</span>
+                    <span className="text-sm font-semibold text-gradient-orange">
                       ৳{paymentChartData.reduce((sum, p) => sum + p.amount, 0).toLocaleString()}
                     </span>
                   </div>
                 </div>
               </div>
             ) : (
-              <div className="text-gray-500 text-center py-8 text-sm">No payment data</div>
+              <div className="text-white/25 text-center py-8 text-sm">No payment data</div>
             )}
           </div>
 
-          {/* Transaction Status - Minimalistic Bars */}
-          <div className="bg-black/40 border border-gray-800 rounded-lg p-6">
-            <h3 className="text-lg font-medium text-white mb-6">Payment Status</h3>
+          {/* Transaction Status */}
+          <div className="glass-card rounded-xl p-6">
+            <h3 className="text-sm font-medium text-white/60 mb-6 uppercase tracking-wider">Payment Status</h3>
             {(dashboardData.completed_transactions > 0 || dashboardData.pending_transactions > 0) ? (
               <div className="space-y-5">
-                {/* Completed/Paid */}
                 <div>
                   <div className="flex justify-between items-center mb-2">
-                    <span className="text-sm text-gray-400">Paid</span>
-                    <span className="text-sm font-medium text-green-400">{dashboardData.completed_transactions}</span>
+                    <span className="text-sm text-white/50">Paid</span>
+                    <span className="text-sm font-semibold text-emerald-400">{dashboardData.completed_transactions}</span>
                   </div>
-                  <div className="h-2 bg-gray-800 rounded-full overflow-hidden">
+                  <div className="h-2 bg-white/[0.04] rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-green-500 rounded-full transition-all duration-500"
+                      className="h-full bg-emerald-500 rounded-full animate-progressFill"
                       style={{
                         width: `${(dashboardData.completed_transactions / (dashboardData.completed_transactions + dashboardData.pending_transactions)) * 100}%`
                       }}
@@ -405,15 +391,14 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
-                {/* Pending/Unpaid */}
                 <div>
                   <div className="flex justify-between items-center mb-2">
-                    <span className="text-sm text-gray-400">Unpaid</span>
-                    <span className="text-sm font-medium text-red-400">{dashboardData.pending_transactions}</span>
+                    <span className="text-sm text-white/50">Unpaid</span>
+                    <span className="text-sm font-semibold text-red-400">{dashboardData.pending_transactions}</span>
                   </div>
-                  <div className="h-2 bg-gray-800 rounded-full overflow-hidden">
+                  <div className="h-2 bg-white/[0.04] rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-red-500 rounded-full transition-all duration-500"
+                      className="h-full bg-red-500 rounded-full animate-progressFill"
                       style={{
                         width: `${(dashboardData.pending_transactions / (dashboardData.completed_transactions + dashboardData.pending_transactions)) * 100}%`
                       }}
@@ -421,68 +406,67 @@ export default function DashboardPage() {
                   </div>
                 </div>
 
-                {/* Summary */}
-                <div className="pt-4 border-t border-gray-800">
+                <div className="pt-4 border-t border-white/[0.06]">
                   <div className="flex justify-between items-center">
-                    <span className="text-xs text-gray-500">Total Bookings</span>
+                    <span className="text-xs text-white/25">Total Bookings</span>
                     <span className="text-sm text-white">{dashboardData.completed_transactions + dashboardData.pending_transactions}</span>
                   </div>
                   <div className="flex justify-between items-center mt-2">
-                    <span className="text-xs text-gray-500">Collection Rate</span>
-                    <span className="text-sm text-green-400">
+                    <span className="text-xs text-white/25">Collection Rate</span>
+                    <span className="text-sm font-semibold text-emerald-400">
                       {((dashboardData.completed_transactions / (dashboardData.completed_transactions + dashboardData.pending_transactions)) * 100).toFixed(0)}%
                     </span>
                   </div>
                 </div>
               </div>
             ) : (
-              <div className="text-gray-500 text-center py-8 text-sm">No status data</div>
+              <div className="text-white/25 text-center py-8 text-sm">No status data</div>
             )}
           </div>
         </div>
 
         {/* Recent Activity */}
-        <div className="bg-black/40 border border-gray-800 rounded-lg p-6">
+        <div className="glass-card rounded-xl p-6 animate-fadeInUp stagger-5">
           <div className="flex justify-between items-center mb-6">
-            <h3 className="text-lg font-medium text-white">Recent Activity</h3>
-            <Link href="/bookings" className="text-primary hover:text-primary-light text-sm transition-colors">View All →</Link>
+            <h3 className="text-sm font-medium text-white/60 uppercase tracking-wider">Recent Activity</h3>
+            <Link href="/bookings" className="text-orange-400 hover:text-orange-300 text-sm transition-colors font-medium">View All →</Link>
           </div>
           {dashboardData.recent_bookings.length > 0 ? (
-            <div className="space-y-3">
+            <div className="space-y-1">
               {dashboardData.recent_bookings.slice(0, 5).map((booking, index) => (
-                <div key={index} className="flex justify-between items-center py-2 border-b border-gray-800/50 last:border-0">
+                <div key={index} className="flex justify-between items-center py-3 px-3 rounded-lg table-row-hover border-b border-white/[0.03] last:border-0">
                   <div className="flex-1">
-                    <div className="text-gray-300 text-sm font-medium">{booking.name}</div>
-                    <div className="text-gray-500 text-xs">{booking.time_slot}</div>
+                    <div className="text-white text-sm font-medium">{booking.name}</div>
+                    <div className="text-white/30 text-xs">{booking.time_slot}</div>
                   </div>
                   <div className="text-right">
-                    <div className="text-gray-400 text-xs">{new Date(booking.booking_date).toLocaleDateString()}</div>
+                    <div className="text-white/40 text-xs">{new Date(booking.booking_date).toLocaleDateString()}</div>
                   </div>
                 </div>
               ))}
             </div>
           ) : (
-            <div className="text-gray-500 text-center py-8 text-sm">No recent activity</div>
+            <div className="text-white/25 text-center py-8 text-sm">No recent activity</div>
           )}
         </div>
 
         {/* Summary Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-black/20 border border-gray-800/50 rounded-lg p-4">
-            <div className="text-gray-500 text-xs uppercase tracking-wide mb-1">Total Bookings</div>
-            <div className="text-white text-xl font-light">{dashboardData.total_bookings}</div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 animate-fadeInUp stagger-6">
+          <div className="glass-card rounded-xl p-4">
+            <div className="text-white/25 text-[10px] uppercase tracking-wider mb-1">Total Bookings</div>
+            <div className="text-white text-xl font-semibold">{dashboardData.total_bookings}</div>
           </div>
-          <div className="bg-black/20 border border-gray-800/50 rounded-lg p-4">
-            <div className="text-gray-500 text-xs uppercase tracking-wide mb-1">Total Revenue</div>
-            <div className="text-white text-xl font-light">{formatCurrency(dashboardData.total_revenue)}</div>
+          <div className="glass-card rounded-xl p-4">
+            <div className="text-white/25 text-[10px] uppercase tracking-wider mb-1">Total Revenue</div>
+            <div className="text-white text-xl font-semibold">{formatCurrency(dashboardData.total_revenue)}</div>
           </div>
-          <div className="bg-black/20 border border-gray-800/50 rounded-lg p-4">
-            <div className="text-gray-500 text-xs uppercase tracking-wide mb-1">This Week</div>
-            <div className="text-white text-xl font-light">{dashboardData.bookings_last_week}</div>
+          <div className="glass-card rounded-xl p-4">
+            <div className="text-white/25 text-[10px] uppercase tracking-wider mb-1">This Week</div>
+            <div className="text-white text-xl font-semibold">{dashboardData.bookings_last_week}</div>
           </div>
-          <div className="bg-black/20 border border-gray-800/50 rounded-lg p-4">
-            <div className="text-gray-500 text-xs uppercase tracking-wide mb-1">Daily Avg</div>
-            <div className="text-white text-xl font-light">{dashboardData.avg_bookings_per_day.toFixed(1)}</div>
+          <div className="glass-card rounded-xl p-4">
+            <div className="text-white/25 text-[10px] uppercase tracking-wider mb-1">Daily Avg</div>
+            <div className="text-white text-xl font-semibold">{dashboardData.avg_bookings_per_day.toFixed(1)}</div>
           </div>
         </div>
       </div>

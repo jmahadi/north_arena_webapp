@@ -146,24 +146,24 @@ export default function FinancialJournalPage() {
     <AdminLayout>
       <div className="container mx-auto px-4 py-6">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-light text-white">Financial Journal</h1>
+        <div className="flex items-center justify-between mb-6 animate-fadeInUp stagger-1">
+          <h1 className="text-2xl font-bold text-white tracking-tight">Financial Journal</h1>
           <button
             onClick={exportToCSV}
             disabled={transactions.length === 0}
-            className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 disabled:opacity-50 text-white text-sm rounded transition-colors"
+            className="glass-card hover:bg-white/[0.06] disabled:opacity-30 text-white/60 hover:text-white px-4 py-2 text-sm rounded-lg transition-all duration-200 font-medium"
           >
             Export CSV
           </button>
         </div>
 
         {/* Date Range */}
-        <div className="flex flex-wrap items-center gap-2 mb-4">
+        <div className="flex flex-wrap items-center gap-2 mb-4 animate-fadeInUp stagger-2">
           {['today', 'last7', 'last30', 'thisMonth'].map((preset) => (
             <button
               key={preset}
               onClick={() => setQuickRange(preset as any)}
-              className="px-2 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs rounded transition-colors"
+              className="px-3 py-1.5 bg-white/[0.03] hover:bg-white/[0.06] text-white/40 hover:text-white/70 text-xs rounded-lg transition-all duration-200 border border-white/[0.04] hover:border-white/10"
             >
               {preset === 'today' ? 'Today' : preset === 'last7' ? '7D' : preset === 'last30' ? '30D' : 'Month'}
             </button>
@@ -173,30 +173,30 @@ export default function FinancialJournalPage() {
               type="date"
               value={filters.startDate}
               onChange={(e) => setFilters(prev => ({ ...prev, startDate: e.target.value }))}
-              className="px-2 py-1.5 rounded bg-gray-800 border border-gray-700 text-white text-sm focus:border-orange-500 focus:outline-none"
+              className="glass-input px-3 py-1.5 rounded-lg text-sm"
             />
-            <span className="text-gray-500 text-sm">to</span>
+            <span className="text-white/20 text-sm">to</span>
             <input
               type="date"
               value={filters.endDate}
               onChange={(e) => setFilters(prev => ({ ...prev, endDate: e.target.value }))}
-              className="px-2 py-1.5 rounded bg-gray-800 border border-gray-700 text-white text-sm focus:border-orange-500 focus:outline-none"
+              className="glass-input px-3 py-1.5 rounded-lg text-sm"
             />
           </div>
         </div>
 
         {/* Filters */}
-        <div className="flex flex-wrap items-center gap-3 mb-6 text-sm">
+        <div className="flex flex-wrap items-center gap-3 mb-6 text-sm animate-fadeInUp stagger-3">
           <div className="flex items-center gap-2">
-            <span className="text-gray-500">Payment:</span>
+            <span className="text-white/25 text-xs uppercase tracking-wider">Payment:</span>
             {PAYMENT_METHODS.map(method => (
               <button
                 key={method}
                 onClick={() => toggleFilter('payment', method)}
-                className={`px-2 py-1 rounded transition-colors ${
+                className={`px-3 py-1 rounded-lg transition-all duration-200 text-xs ${
                   selectedPaymentMethods.includes(method)
-                    ? 'bg-orange-600 text-white'
-                    : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                    ? 'bg-orange-500/15 text-orange-400 border border-orange-500/30'
+                    : 'bg-white/[0.03] text-white/30 border border-white/[0.04] hover:bg-white/[0.06] hover:text-white/50'
                 }`}
               >
                 {method === 'BKASH' ? 'bKash' : 'Cash'}
@@ -204,15 +204,15 @@ export default function FinancialJournalPage() {
             ))}
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-gray-500">Type:</span>
+            <span className="text-white/25 text-xs uppercase tracking-wider">Type:</span>
             {TRANSACTION_TYPES.map(type => (
               <button
                 key={type}
                 onClick={() => toggleFilter('transaction', type)}
-                className={`px-2 py-1 rounded transition-colors ${
+                className={`px-3 py-1 rounded-lg transition-all duration-200 text-xs ${
                   selectedTransactionTypes.includes(type)
-                    ? 'bg-orange-600 text-white'
-                    : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                    ? 'bg-orange-500/15 text-orange-400 border border-orange-500/30'
+                    : 'bg-white/[0.03] text-white/30 border border-white/[0.04] hover:bg-white/[0.06] hover:text-white/50'
                 }`}
               >
                 {type === 'BOOKING_PAYMENT' ? 'Booking' : 'Slot'}
@@ -220,20 +220,20 @@ export default function FinancialJournalPage() {
             ))}
           </div>
           {hasActiveFilters && (
-            <button onClick={clearFilters} className="px-2 py-1 text-gray-500 hover:text-white transition-colors">
+            <button onClick={clearFilters} className="px-2 py-1 text-white/25 hover:text-white/50 transition-colors text-xs">
               Clear
             </button>
           )}
-          <div className="ml-auto flex items-center gap-1 bg-gray-800 rounded p-0.5">
+          <div className="ml-auto flex items-center gap-1 bg-white/[0.02] rounded-lg p-0.5 border border-white/[0.04]">
             <button
               onClick={() => setViewMode('all')}
-              className={`px-2 py-1 rounded text-xs transition-colors ${viewMode === 'all' ? 'bg-gray-700 text-white' : 'text-gray-400'}`}
+              className={`px-3 py-1 rounded-md text-xs transition-all duration-200 ${viewMode === 'all' ? 'bg-white/[0.06] text-white' : 'text-white/30'}`}
             >
               List
             </button>
             <button
               onClick={() => setViewMode('daily')}
-              className={`px-2 py-1 rounded text-xs transition-colors ${viewMode === 'daily' ? 'bg-gray-700 text-white' : 'text-gray-400'}`}
+              className={`px-3 py-1 rounded-md text-xs transition-all duration-200 ${viewMode === 'daily' ? 'bg-white/[0.06] text-white' : 'text-white/30'}`}
             >
               Summary
             </button>
@@ -242,7 +242,7 @@ export default function FinancialJournalPage() {
 
         {/* Error */}
         {error && (
-          <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded text-red-400 text-sm">
+          <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
             {error}
           </div>
         )}
@@ -259,71 +259,71 @@ export default function FinancialJournalPage() {
                 <img src="/images/White-Logomark.png" alt="Loading" className="w-10 h-10 object-contain animate-fade-in-out" />
               </div>
             </div>
-            <p className="mt-3 text-gray-400 text-sm">Loading transactions...</p>
+            <p className="mt-3 text-white/30 text-sm">Loading transactions...</p>
           </div>
         ) : (
           <>
-            {/* Summary - Simplified to just Cash, bKash, Total */}
-            <div className="grid grid-cols-3 gap-4 mb-6">
-              <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-4">
-                <div className="text-xs text-gray-500 uppercase tracking-wide">Cash</div>
-                <div className="text-xl font-medium text-white mt-1">৳{(periodTotals.CASH || 0).toLocaleString()}</div>
+            {/* Summary */}
+            <div className="grid grid-cols-3 gap-4 mb-6 animate-fadeInUp stagger-4">
+              <div className="glass-card rounded-xl p-4">
+                <div className="text-[10px] text-white/25 uppercase tracking-wider">Cash</div>
+                <div className="text-xl font-semibold text-white mt-1">৳{(periodTotals.CASH || 0).toLocaleString()}</div>
               </div>
-              <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-4">
-                <div className="text-xs text-gray-500 uppercase tracking-wide">bKash</div>
-                <div className="text-xl font-medium text-white mt-1">৳{(periodTotals.BKASH || 0).toLocaleString()}</div>
+              <div className="glass-card rounded-xl p-4">
+                <div className="text-[10px] text-white/25 uppercase tracking-wider">bKash</div>
+                <div className="text-xl font-semibold text-white mt-1">৳{(periodTotals.BKASH || 0).toLocaleString()}</div>
               </div>
-              <div className="bg-orange-500/10 border border-orange-500/20 rounded-lg p-4">
-                <div className="text-xs text-orange-400 uppercase tracking-wide">Total</div>
-                <div className="text-xl font-medium text-orange-400 mt-1">৳{grandTotal.toLocaleString()}</div>
-                <div className="text-xs text-gray-500 mt-0.5">{transactionCount} transactions</div>
+              <div className="glass-card-glow rounded-xl p-4" style={{ borderColor: 'rgba(249, 115, 22, 0.15)' }}>
+                <div className="text-[10px] text-orange-400 uppercase tracking-wider">Total</div>
+                <div className="text-xl font-semibold text-gradient-orange mt-1">৳{grandTotal.toLocaleString()}</div>
+                <div className="text-[10px] text-white/20 mt-0.5">{transactionCount} transactions</div>
               </div>
             </div>
 
             {/* Transactions */}
             {viewMode === 'all' ? (
-              <div className="bg-gray-900/50 border border-gray-800 rounded-lg overflow-x-auto">
+              <div className="glass-card rounded-xl overflow-x-auto animate-fadeInUp stagger-5">
                 <table className="w-full min-w-[600px]">
                   <thead>
-                    <tr className="border-b border-gray-800">
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">Date</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">Customer</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">Booking</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">Payment</th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase whitespace-nowrap">Amount</th>
+                    <tr className="border-b border-white/[0.06]">
+                      <th className="px-4 py-3 text-left text-[10px] font-medium text-white/25 uppercase tracking-wider whitespace-nowrap">Date</th>
+                      <th className="px-4 py-3 text-left text-[10px] font-medium text-white/25 uppercase tracking-wider whitespace-nowrap">Customer</th>
+                      <th className="px-4 py-3 text-left text-[10px] font-medium text-white/25 uppercase tracking-wider whitespace-nowrap">Booking</th>
+                      <th className="px-4 py-3 text-left text-[10px] font-medium text-white/25 uppercase tracking-wider whitespace-nowrap">Payment</th>
+                      <th className="px-4 py-3 text-right text-[10px] font-medium text-white/25 uppercase tracking-wider whitespace-nowrap">Amount</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-800/50">
+                  <tbody className="divide-y divide-white/[0.03]">
                     {transactions.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
+                        <td colSpan={5} className="px-4 py-8 text-center text-white/25">
                           No transactions found
                         </td>
                       </tr>
                     ) : (
                       transactions.map((t) => (
-                        <tr key={t.id} className={`hover:bg-gray-800/30 ${t.is_cancelled ? 'opacity-50' : ''}`}>
+                        <tr key={t.id} className={`table-row-hover ${t.is_cancelled ? 'opacity-40' : ''}`}>
                           <td className="px-4 py-3 whitespace-nowrap">
                             <div className="text-sm text-white">{format(new Date(t.created_at), 'MMM dd')}</div>
-                            <div className="text-xs text-gray-500">{format(new Date(t.created_at), 'HH:mm')}</div>
+                            <div className="text-xs text-white/20">{format(new Date(t.created_at), 'HH:mm')}</div>
                           </td>
                           <td className="px-4 py-3">
                             <div className="text-sm text-white">{t.customer_name}</div>
-                            <div className="text-xs text-gray-500">{t.customer_phone}</div>
+                            <div className="text-xs text-white/20">{t.customer_phone}</div>
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap">
                             <div className="text-sm text-white">
                               {t.booking_date ? format(new Date(t.booking_date), 'MMM dd') : '-'}
                             </div>
-                            <div className="text-xs text-gray-500">{t.time_slot || '-'}</div>
+                            <div className="text-xs text-white/20">{t.time_slot || '-'}</div>
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap">
                             <span
-                              className={`text-xs ${
+                              className={`text-xs font-medium ${
                                 t.transaction_type === 'DISCOUNT' || !t.payment_method
                                   ? 'text-orange-300'
                                   : t.payment_method === 'CASH'
-                                  ? 'text-gray-400'
+                                  ? 'text-white/40'
                                   : 'text-orange-400'
                               }`}
                             >
@@ -335,7 +335,7 @@ export default function FinancialJournalPage() {
                             </span>
                           </td>
                           <td className="px-4 py-3 text-right whitespace-nowrap">
-                            <span className="text-white font-medium">৳{t.amount.toLocaleString()}</span>
+                            <span className="text-white font-semibold">৳{t.amount.toLocaleString()}</span>
                           </td>
                         </tr>
                       ))
@@ -344,9 +344,9 @@ export default function FinancialJournalPage() {
                 </table>
               </div>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-3 animate-fadeInUp stagger-5">
                 {Object.entries(groupedTransactions).length === 0 ? (
-                  <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-8 text-center text-gray-500">
+                  <div className="glass-card rounded-xl p-8 text-center text-white/25">
                     No transactions found
                   </div>
                 ) : (
@@ -357,38 +357,38 @@ export default function FinancialJournalPage() {
                       const dayTotal = Object.values(dateTotals).reduce((sum, val) => sum + val, 0);
 
                       return (
-                        <div key={date} className="bg-gray-900/50 border border-gray-800 rounded-lg overflow-hidden">
-                          <div className="px-4 py-3 border-b border-gray-800 flex items-center justify-between">
+                        <div key={date} className="glass-card rounded-xl overflow-hidden">
+                          <div className="px-4 py-3 border-b border-white/[0.06] flex items-center justify-between">
                             <div>
                               <div className="text-white font-medium">{format(new Date(date), 'EEEE, MMM dd')}</div>
-                              <div className="text-xs text-gray-500">{dateTransactions.length} transactions</div>
+                              <div className="text-xs text-white/20">{dateTransactions.length} transactions</div>
                             </div>
                             <div className="text-right">
-                              <div className="text-orange-400 font-medium">৳{dayTotal.toLocaleString()}</div>
-                              <div className="text-xs text-gray-500">
+                              <div className="text-gradient-orange font-semibold">৳{dayTotal.toLocaleString()}</div>
+                              <div className="text-xs text-white/20">
                                 {dateTotals.CASH > 0 && `Cash: ৳${dateTotals.CASH.toLocaleString()}`}
                                 {dateTotals.CASH > 0 && dateTotals.BKASH > 0 && ' · '}
                                 {dateTotals.BKASH > 0 && `bKash: ৳${dateTotals.BKASH.toLocaleString()}`}
                               </div>
                             </div>
                           </div>
-                          <div className="divide-y divide-gray-800/50">
+                          <div className="divide-y divide-white/[0.03]">
                             {dateTransactions.map(t => (
-                              <div key={t.id} className={`px-4 py-2.5 flex items-center justify-between ${t.is_cancelled ? 'opacity-50' : ''}`}>
+                              <div key={t.id} className={`px-4 py-2.5 flex items-center justify-between table-row-hover ${t.is_cancelled ? 'opacity-40' : ''}`}>
                                 <div className="flex items-center gap-4">
-                                  <div className="text-xs text-gray-500 w-12">{format(new Date(t.created_at), 'HH:mm')}</div>
+                                  <div className="text-xs text-white/20 w-12">{format(new Date(t.created_at), 'HH:mm')}</div>
                                   <div>
                                     <div className="text-sm text-white">{t.customer_name}</div>
-                                    <div className="text-xs text-gray-500">{t.time_slot || '-'}</div>
+                                    <div className="text-xs text-white/20">{t.time_slot || '-'}</div>
                                   </div>
                                 </div>
                                 <div className="flex items-center gap-3">
                                   <span
-                                    className={`text-xs ${
+                                    className={`text-xs font-medium ${
                                       t.transaction_type === 'DISCOUNT' || !t.payment_method
                                         ? 'text-orange-300'
                                         : t.payment_method === 'CASH'
-                                        ? 'text-gray-500'
+                                        ? 'text-white/30'
                                         : 'text-orange-400'
                                     }`}
                                   >
@@ -398,7 +398,7 @@ export default function FinancialJournalPage() {
                                       ? 'bKash'
                                       : (t.payment_method || 'Other')}
                                   </span>
-                                  <span className="text-white font-medium">৳{t.amount.toLocaleString()}</span>
+                                  <span className="text-white font-semibold">৳{t.amount.toLocaleString()}</span>
                                 </div>
                               </div>
                             ))}

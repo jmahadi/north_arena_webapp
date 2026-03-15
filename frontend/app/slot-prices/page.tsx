@@ -47,9 +47,8 @@ const getDaySlots = (timeSlots: string[]) => {
     const startTime = slot.split(' - ')[0];
     const hour = parseInt(startTime.split(':')[0]);
     const ampm = startTime.includes('PM') ? 'PM' : 'AM';
-    
     if (ampm === 'AM') return true;
-    if (ampm === 'PM' && hour === 12) return true; // 12 PM is noon, day time
+    if (ampm === 'PM' && hour === 12) return true;
     if (ampm === 'PM' && hour < 6) return true;
     return false;
   });
@@ -60,19 +59,11 @@ const getNightSlots = (timeSlots: string[]) => {
     const startTime = slot.split(' - ')[0];
     const hour = parseInt(startTime.split(':')[0]);
     const ampm = startTime.includes('PM') ? 'PM' : 'AM';
-    
     if (ampm === 'PM' && hour >= 6 && hour !== 12) return true;
     return false;
   });
 };
 
-const getDynamicTimeRangeLabel = (timeSlots: string[], type: 'day' | 'night') => {
-  const slots = type === 'day' ? getDaySlots(timeSlots) : getNightSlots(timeSlots);
-  if (slots.length === 0) return `No ${type} slots`;
-  const startTime = slots[0]?.split(' - ')[0];
-  const endTime = slots[slots.length - 1]?.split(' - ')[1];
-  return `${startTime} - ${endTime}`;
-};
 const dayOrder = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
 
 const daysOfWeek = [
@@ -139,9 +130,7 @@ export default function SlotPricesPage() {
     try {
       const response = await api.get('/available_time_slots');
       if (response.data.success) {
-        console.log('Available time slots:', response.data.time_slots);
         setAvailableTimeSlots(response.data.time_slots);
-        // Update the global timeSlots variable for backward compatibility
         timeSlots = response.data.time_slots;
       }
     } catch (error) {
@@ -155,7 +144,6 @@ export default function SlotPricesPage() {
       setIsLoading(true);
       const response = await api.get('/list_slot_prices');
       if (response.data.success) {
-        console.log('Fetched slot prices:', response.data.slot_prices);
         setSlotPrices(response.data.slot_prices);
       }
     } catch (error) {
@@ -186,9 +174,7 @@ export default function SlotPricesPage() {
 
   const toggleBulkDay = (day: string) => {
     setBulkSelectedDays(prev => {
-      if (prev.includes(day)) {
-        return prev.filter(d => d !== day);
-      }
+      if (prev.includes(day)) return prev.filter(d => d !== day);
       return [...prev, day];
     });
   };
@@ -200,14 +186,12 @@ export default function SlotPricesPage() {
 
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
     try {
       const submitData = new FormData();
       submitData.append('time_slot', formData.time_slot);
       submitData.append('day_of_week', formData.day_of_week);
       submitData.append('price', formData.price.toString());
       submitData.append('is_default', formData.is_default.toString());
-      
       if (formData.duration_type === 'temporary') {
         submitData.append('start_date', formData.start_date);
         submitData.append('end_date', formData.end_date);
@@ -219,19 +203,10 @@ export default function SlotPricesPage() {
 
       if (response.data.success) {
         showMessage('success', 'Slot price updated successfully!');
-        setFormData({
-          time_slot: '',
-          day_of_week: '',
-          price: 0,
-          duration_type: 'permanent',
-          start_date: '',
-          end_date: '',
-          is_default: true
-        });
-        await fetchSlotPrices(); // Refresh data
+        setFormData({ time_slot: '', day_of_week: '', price: 0, duration_type: 'permanent', start_date: '', end_date: '', is_default: true });
+        await fetchSlotPrices();
       }
     } catch (error: any) {
-      console.error('Error updating slot price:', error);
       showMessage('error', error.response?.data?.message || 'Failed to update slot price');
     }
   };
@@ -272,7 +247,6 @@ export default function SlotPricesPage() {
       showMessage('error', 'Please select at least one day');
       return;
     }
-
     if (bulkDuration === 'temporary' && (!bulkStartDate || !bulkEndDate)) {
       showMessage('error', 'Please select start and end dates for temporary pricing');
       return;
@@ -291,10 +265,6 @@ export default function SlotPricesPage() {
     if (window.confirm(`Apply price ৳${bulkPrice} to ${bulkSession} slots (${sessionSlots.length}) for ${selectedDaysLabel} ${durationLabel}?`)) {
       try {
         const promises: Promise<any>[] = [];
-
-        console.log('Bulk update - Target days:', bulkSelectedDays);
-        console.log('Bulk update - Target slots:', sessionSlots);
-
         bulkSelectedDays.forEach(day => {
           sessionSlots.forEach(slot => {
             const submitData = new FormData();
@@ -302,12 +272,10 @@ export default function SlotPricesPage() {
             submitData.append('day_of_week', day);
             submitData.append('price', bulkPrice);
             submitData.append('is_default', bulkDuration === 'indefinite' ? 'true' : 'false');
-            
             if (bulkDuration === 'temporary') {
               submitData.append('start_date', bulkStartDate);
               submitData.append('end_date', bulkEndDate);
             }
-            
             promises.push(
               api.post('/add_update_slot_price', submitData, {
                 headers: { 'Content-Type': 'multipart/form-data' }
@@ -331,13 +299,8 @@ export default function SlotPricesPage() {
           showMessage('error', `Bulk update: ${successCount} succeeded, ${failures.length} failed. ${errorMessage}`);
         }
 
-        await Promise.all([
-          fetchSlotPrices(),
-          fetchAvailableTimeSlots(),
-          fetchCurrentSlotPrices()
-        ]); // Refresh data
+        await Promise.all([fetchSlotPrices(), fetchAvailableTimeSlots(), fetchCurrentSlotPrices()]);
       } catch (error: any) {
-        console.error('Bulk update error:', error);
         showMessage('error', error.response?.data?.message || 'Error during bulk update');
       }
     }
@@ -350,17 +313,14 @@ export default function SlotPricesPage() {
       return;
     }
 
-    // Add the new slot to all days with the default price
     try {
       const promises: Promise<any>[] = [];
-      
       daysOfWeek.forEach(day => {
         const submitData = new FormData();
         submitData.append('time_slot', newSlotTime);
         submitData.append('day_of_week', day.value);
         submitData.append('price', newSlotPrice);
         submitData.append('is_default', 'true');
-        
         promises.push(
           api.post('/add_update_slot_price', submitData, {
             headers: { 'Content-Type': 'multipart/form-data' }
@@ -372,10 +332,7 @@ export default function SlotPricesPage() {
       showMessage('success', 'New slot added successfully!');
       setNewSlotTime('');
       setNewSlotPrice('');
-      await Promise.all([
-        fetchSlotPrices(),
-        fetchAvailableTimeSlots()
-      ]);
+      await Promise.all([fetchSlotPrices(), fetchAvailableTimeSlots()]);
     } catch (error) {
       showMessage('error', 'Error adding new slot');
     }
@@ -394,7 +351,7 @@ export default function SlotPricesPage() {
               <img src="/images/White-Logomark.png" alt="Loading" className="w-10 h-10 object-contain animate-fade-in-out" />
             </div>
           </div>
-          <p className="mt-3 text-gray-400 text-sm">Loading slots & prices...</p>
+          <p className="mt-3 text-white/30 text-sm">Loading slots & prices...</p>
         </div>
       </AdminLayout>
     );
@@ -403,18 +360,18 @@ export default function SlotPricesPage() {
   return (
     <AdminLayout>
       <div className="container mx-auto p-4">
-        <h1 className="text-3xl font-light text-white mb-6">Slots & Prices</h1>
-        
+        <h1 className="text-3xl font-bold text-white mb-6 tracking-tight animate-fadeInUp">Slots & Prices</h1>
+
         {/* Message Display */}
         {message.type && (
-          <div className={`mb-4 p-4 rounded border ${message.type === 'success' ? 'bg-green-500/10 border-green-500/30 text-green-400' : 'bg-red-500/10 border-red-500/30 text-red-400'}`}>
+          <div className={`mb-4 p-4 rounded-xl border animate-scaleIn ${message.type === 'success' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-red-500/10 border-red-500/20 text-red-400'}`}>
             {message.text}
           </div>
         )}
 
         {/* Tab Navigation */}
-        <div className="mb-8 overflow-x-auto">
-          <nav className="flex space-x-1 p-1 bg-black/20 rounded-lg border border-gray-800 min-w-max">
+        <div className="mb-8 overflow-x-auto animate-fadeInUp stagger-1">
+          <nav className="flex space-x-1 p-1 bg-white/[0.02] rounded-xl border border-white/[0.04] min-w-max">
             {[
               { key: 'add-price', label: 'Pricing' },
               { key: 'manage-slots', label: 'Slots' },
@@ -423,10 +380,10 @@ export default function SlotPricesPage() {
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key as any)}
-                className={`px-3 py-2 rounded-md font-medium transition-all duration-200 text-sm whitespace-nowrap ${
+                className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 text-sm whitespace-nowrap ${
                   activeTab === tab.key
-                    ? 'bg-orange-600 text-white shadow-lg'
-                    : 'text-gray-400 hover:text-gray-300 hover:bg-gray-800/50'
+                    ? 'bg-orange-600 text-white shadow-lg shadow-orange-500/20'
+                    : 'text-white/30 hover:text-white/60 hover:bg-white/[0.03]'
                 }`}
               >
                 {tab.label}
@@ -437,17 +394,17 @@ export default function SlotPricesPage() {
 
         {/* Tab Content */}
         {activeTab === 'add-price' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-fadeInUp stagger-2">
             {/* Add/Update Form */}
-            <div className="bg-black/40 border border-gray-800 rounded-lg p-6">
-              <h3 className="text-lg font-medium text-white mb-6">Add/Update Price</h3>
+            <div className="glass-card rounded-xl p-6">
+              <h3 className="text-sm font-medium text-white/60 mb-6 uppercase tracking-wider">Add/Update Price</h3>
               <form onSubmit={handleFormSubmit} className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Time Slot</label>
+                  <label className="block text-xs font-medium text-white/40 mb-2 uppercase tracking-wider">Time Slot</label>
                   <select
                     value={formData.time_slot}
                     onChange={(e) => setFormData({ ...formData, time_slot: e.target.value })}
-                    className="w-full bg-gray-800 border border-gray-700 rounded-md px-3 py-2 text-white focus:border-orange-500 focus:outline-none transition-colors"
+                    className="glass-input w-full rounded-lg px-3 py-2.5 text-sm"
                     required
                   >
                     <option value="">Select Time Slot</option>
@@ -458,11 +415,11 @@ export default function SlotPricesPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Day of Week</label>
+                  <label className="block text-xs font-medium text-white/40 mb-2 uppercase tracking-wider">Day of Week</label>
                   <select
                     value={formData.day_of_week}
                     onChange={(e) => setFormData({ ...formData, day_of_week: e.target.value })}
-                    className="w-full bg-gray-800 border border-gray-700 rounded-md px-3 py-2 text-white focus:border-orange-500 focus:outline-none transition-colors"
+                    className="glass-input w-full rounded-lg px-3 py-2.5 text-sm"
                     required
                   >
                     <option value="">Select Day</option>
@@ -473,12 +430,12 @@ export default function SlotPricesPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Price (৳)</label>
+                  <label className="block text-xs font-medium text-white/40 mb-2 uppercase tracking-wider">Price (৳)</label>
                   <input
                     type="number"
                     value={formData.price || ''}
                     onChange={(e) => setFormData({ ...formData, price: Number(e.target.value) })}
-                    className="w-full bg-black/20 border border-gray-700 rounded-md px-3 py-2 text-white focus:border-orange-500 focus:outline-none transition-colors"
+                    className="glass-input w-full rounded-lg px-3 py-2.5 text-sm"
                     min="0"
                     step="0.01"
                     placeholder="Enter price"
@@ -487,71 +444,71 @@ export default function SlotPricesPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Price Duration</label>
-                  <div className="space-y-2">
-                    <label className="flex items-center">
-                      <input
-                        type="radio"
-                        name="duration_type"
-                        value="permanent"
-                        checked={formData.duration_type === 'permanent'}
-                        onChange={(e) => setFormData({ ...formData, duration_type: e.target.value as any })}
-                        className="mr-2"
-                      />
-                      <span className="text-gray-300">Permanent (Indefinite)</span>
-                    </label>
-                    <label className="flex items-center">
-                      <input
-                        type="radio"
-                        name="duration_type"
-                        value="temporary"
-                        checked={formData.duration_type === 'temporary'}
-                        onChange={(e) => setFormData({ ...formData, duration_type: e.target.value as any })}
-                        className="mr-2"
-                      />
-                      <span className="text-gray-300">Temporary (With End Date)</span>
-                    </label>
+                  <label className="block text-xs font-medium text-white/40 mb-2 uppercase tracking-wider">Price Duration</label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, duration_type: 'permanent', is_default: true })}
+                      className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200 ${
+                        formData.duration_type === 'permanent'
+                          ? 'bg-orange-500/15 text-orange-400 border border-orange-500/30'
+                          : 'bg-white/[0.02] text-white/40 border border-white/[0.06] hover:bg-white/[0.04]'
+                      }`}
+                    >
+                      Permanent
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, duration_type: 'temporary', is_default: false })}
+                      className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200 ${
+                        formData.duration_type === 'temporary'
+                          ? 'bg-orange-500/15 text-orange-400 border border-orange-500/30'
+                          : 'bg-white/[0.02] text-white/40 border border-white/[0.06] hover:bg-white/[0.04]'
+                      }`}
+                    >
+                      Temporary
+                    </button>
                   </div>
                 </div>
 
                 {formData.duration_type === 'temporary' && (
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">Start Date</label>
+                      <label className="block text-xs font-medium text-white/40 mb-2 uppercase tracking-wider">Start Date</label>
                       <input
                         type="date"
                         value={formData.start_date}
                         onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
-                        className="w-full bg-black/20 border border-gray-700 rounded-md px-3 py-2 text-white focus:border-orange-500 focus:outline-none transition-colors"
+                        className="glass-input w-full rounded-lg px-3 py-2.5 text-sm"
                         required
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">End Date</label>
+                      <label className="block text-xs font-medium text-white/40 mb-2 uppercase tracking-wider">End Date</label>
                       <input
                         type="date"
                         value={formData.end_date}
                         onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
-                        className="w-full bg-black/20 border border-gray-700 rounded-md px-3 py-2 text-white focus:border-orange-500 focus:outline-none transition-colors"
+                        className="glass-input w-full rounded-lg px-3 py-2.5 text-sm"
                         required
                       />
                     </div>
                   </div>
                 )}
 
-                <div className="flex items-center">
+                <div className="flex items-center gap-2">
                   <input
                     type="checkbox"
                     checked={formData.is_default}
                     onChange={(e) => setFormData({ ...formData, is_default: e.target.checked })}
-                    className="mr-2"
+                    className="accent-orange-500"
                   />
-                  <label className="text-gray-300">Set as Default Price</label>
+                  <label className="text-white/40 text-sm">Set as Default Price</label>
                 </div>
 
                 <button
                   type="submit"
-                  className="w-full bg-orange-600 hover:bg-orange-700 text-white font-medium py-3 px-4 rounded-md transition-all duration-200 hover:shadow-lg"
+                  className="btn-glow w-full bg-orange-600 text-white font-medium py-3 px-4 rounded-xl transition-all duration-300 text-sm"
                 >
                   Add/Update Price
                 </button>
@@ -559,19 +516,19 @@ export default function SlotPricesPage() {
             </div>
 
             {/* Bulk Pricing */}
-            <div className="bg-black/40 border border-gray-800 rounded-lg p-6">
-              <h3 className="text-lg font-medium text-white mb-6">Bulk Price Update</h3>
+            <div className="glass-card rounded-xl p-6">
+              <h3 className="text-sm font-medium text-white/60 mb-6 uppercase tracking-wider">Bulk Price Update</h3>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Session</label>
+                  <label className="block text-xs font-medium text-white/40 mb-2 uppercase tracking-wider">Session</label>
                   <div className="grid grid-cols-2 gap-2">
                     <button
                       type="button"
                       onClick={() => setBulkSession('day')}
-                      className={`px-3 py-2 rounded-md border text-sm transition-colors ${
+                      className={`px-3 py-2 rounded-lg text-sm transition-all duration-200 ${
                         bulkSession === 'day'
-                          ? 'bg-orange-600 text-white border-orange-500'
-                          : 'bg-gray-800 text-gray-300 border-gray-700 hover:bg-gray-700'
+                          ? 'bg-orange-500/15 text-orange-400 border border-orange-500/30'
+                          : 'bg-white/[0.02] text-white/40 border border-white/[0.06] hover:bg-white/[0.04]'
                       }`}
                     >
                       Day
@@ -579,30 +536,34 @@ export default function SlotPricesPage() {
                     <button
                       type="button"
                       onClick={() => setBulkSession('night')}
-                      className={`px-3 py-2 rounded-md border text-sm transition-colors ${
+                      className={`px-3 py-2 rounded-lg text-sm transition-all duration-200 ${
                         bulkSession === 'night'
-                          ? 'bg-orange-600 text-white border-orange-500'
-                          : 'bg-gray-800 text-gray-300 border-gray-700 hover:bg-gray-700'
+                          ? 'bg-orange-500/15 text-orange-400 border border-orange-500/30'
+                          : 'bg-white/[0.02] text-white/40 border border-white/[0.06] hover:bg-white/[0.04]'
                       }`}
                     >
                       Night
                     </button>
                   </div>
-                  <div className="text-xs text-gray-400 mt-2">
-                    Day slots: {getDaySlots(availableTimeSlots).join(', ') || 'None'}
+                  <div className="text-[10px] text-white/20 mt-2">
+                    Day: {getDaySlots(availableTimeSlots).join(', ') || 'None'}
                   </div>
-                  <div className="text-xs text-gray-400 mt-1">
-                    Night slots: {getNightSlots(availableTimeSlots).join(', ') || 'None'}
+                  <div className="text-[10px] text-white/20 mt-1">
+                    Night: {getNightSlots(availableTimeSlots).join(', ') || 'None'}
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Days (Multi-select)</label>
+                  <label className="block text-xs font-medium text-white/40 mb-2 uppercase tracking-wider">Days</label>
                   <div className="grid grid-cols-2 gap-2">
                     {daysOfWeek.map(day => (
                       <label
                         key={day.value}
-                        className="flex items-center gap-2 bg-gray-800/60 border border-gray-700 rounded-md px-2 py-2 text-sm text-gray-200"
+                        className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 text-xs cursor-pointer transition-all duration-200 ${
+                          bulkSelectedDays.includes(day.value)
+                            ? 'bg-orange-500/10 border-orange-500/25 text-orange-300'
+                            : 'bg-white/[0.02] border-white/[0.06] text-white/40 hover:bg-white/[0.04]'
+                        }`}
                       >
                         <input
                           type="checkbox"
@@ -617,52 +578,52 @@ export default function SlotPricesPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Duration</label>
-                  <div className="space-y-2">
-                    <label className="flex items-center">
-                      <input
-                        type="radio"
-                        name="bulk_duration"
-                        value="indefinite"
-                        checked={bulkDuration === 'indefinite'}
-                        onChange={(e) => setBulkDuration(e.target.value as any)}
-                        className="mr-2"
-                      />
-                      <span className="text-gray-300">Indefinite</span>
-                    </label>
-                    <label className="flex items-center">
-                      <input
-                        type="radio"
-                        name="bulk_duration"
-                        value="temporary"
-                        checked={bulkDuration === 'temporary'}
-                        onChange={(e) => setBulkDuration(e.target.value as any)}
-                        className="mr-2"
-                      />
-                      <span className="text-gray-300">Temporary</span>
-                    </label>
+                  <label className="block text-xs font-medium text-white/40 mb-2 uppercase tracking-wider">Duration</label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setBulkDuration('indefinite')}
+                      className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200 ${
+                        bulkDuration === 'indefinite'
+                          ? 'bg-orange-500/15 text-orange-400 border border-orange-500/30'
+                          : 'bg-white/[0.02] text-white/40 border border-white/[0.06] hover:bg-white/[0.04]'
+                      }`}
+                    >
+                      Indefinite
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBulkDuration('temporary')}
+                      className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200 ${
+                        bulkDuration === 'temporary'
+                          ? 'bg-orange-500/15 text-orange-400 border border-orange-500/30'
+                          : 'bg-white/[0.02] text-white/40 border border-white/[0.06] hover:bg-white/[0.04]'
+                      }`}
+                    >
+                      Temporary
+                    </button>
                   </div>
                 </div>
 
                 {bulkDuration === 'temporary' && (
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">Start Date</label>
+                      <label className="block text-xs font-medium text-white/40 mb-2 uppercase tracking-wider">Start Date</label>
                       <input
                         type="date"
                         value={bulkStartDate}
                         onChange={(e) => setBulkStartDate(e.target.value)}
-                        className="w-full bg-black/20 border border-gray-700 rounded-md px-3 py-2 text-white focus:border-orange-500 focus:outline-none transition-colors"
+                        className="glass-input w-full rounded-lg px-3 py-2.5 text-sm"
                         required
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">End Date</label>
+                      <label className="block text-xs font-medium text-white/40 mb-2 uppercase tracking-wider">End Date</label>
                       <input
                         type="date"
                         value={bulkEndDate}
                         onChange={(e) => setBulkEndDate(e.target.value)}
-                        className="w-full bg-black/20 border border-gray-700 rounded-md px-3 py-2 text-white focus:border-orange-500 focus:outline-none transition-colors"
+                        className="glass-input w-full rounded-lg px-3 py-2.5 text-sm"
                         required
                       />
                     </div>
@@ -670,12 +631,12 @@ export default function SlotPricesPage() {
                 )}
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">Price (৳)</label>
+                  <label className="block text-xs font-medium text-white/40 mb-2 uppercase tracking-wider">Price (৳)</label>
                   <input
                     type="number"
                     value={bulkPrice}
                     onChange={(e) => setBulkPrice(e.target.value)}
-                    className="w-full bg-black/20 border border-gray-700 rounded-md px-3 py-2 text-white focus:border-orange-500 focus:outline-none transition-colors"
+                    className="glass-input w-full rounded-lg px-3 py-2.5 text-sm"
                     placeholder="Enter price"
                     min="0"
                     step="0.01"
@@ -684,7 +645,7 @@ export default function SlotPricesPage() {
 
                 <button
                   onClick={applyBulkPrice}
-                  className="w-full bg-orange-600 hover:bg-orange-700 text-white font-medium py-3 px-4 rounded-md transition-all duration-200 hover:shadow-lg"
+                  className="btn-glow w-full bg-orange-600 text-white font-medium py-3 px-4 rounded-xl transition-all duration-300 text-sm"
                 >
                   Apply Bulk Price
                 </button>
@@ -694,52 +655,52 @@ export default function SlotPricesPage() {
         )}
 
         {activeTab === 'manage-slots' && (
-          <div className="bg-black/40 border border-gray-800 rounded-lg p-6">
-            <h3 className="text-lg font-medium text-white mb-6">Manage Time Slots</h3>
+          <div className="glass-card rounded-xl p-6 animate-fadeInUp">
+            <h3 className="text-sm font-medium text-white/60 mb-6 uppercase tracking-wider">Manage Time Slots</h3>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div>
-                <h4 className="text-lg font-medium text-white mb-4">Add New Time Slot</h4>
+                <h4 className="text-white font-medium mb-4">Add New Time Slot</h4>
                 <form onSubmit={handleNewSlotSubmit} className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">Time Slot</label>
+                    <label className="block text-xs font-medium text-white/40 mb-2 uppercase tracking-wider">Time Slot</label>
                     <input
                       type="text"
                       value={newSlotTime}
                       onChange={(e) => setNewSlotTime(e.target.value)}
                       placeholder="e.g., 10:30 PM - 12:00 AM"
-                      className="w-full bg-black/20 border border-gray-700 rounded-md px-3 py-2 text-white focus:border-orange-500 focus:outline-none transition-colors"
+                      className="glass-input w-full rounded-lg px-3 py-2.5 text-sm"
                       required
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">Default Price (৳)</label>
+                    <label className="block text-xs font-medium text-white/40 mb-2 uppercase tracking-wider">Default Price (৳)</label>
                     <input
                       type="number"
                       value={newSlotPrice}
                       onChange={(e) => setNewSlotPrice(e.target.value)}
                       placeholder="Default Price"
-                      className="w-full bg-black/20 border border-gray-700 rounded-md px-3 py-2 text-white focus:border-orange-500 focus:outline-none transition-colors"
+                      className="glass-input w-full rounded-lg px-3 py-2.5 text-sm"
                       min="0"
                       step="0.01"
                       required
                     />
                   </div>
-                  <button 
+                  <button
                     type="submit"
-                    className="w-full bg-orange-600 hover:bg-orange-700 text-white py-2 px-4 rounded-md transition-colors font-medium"
+                    className="btn-glow w-full bg-orange-600 text-white py-2.5 px-4 rounded-xl transition-all duration-300 font-medium text-sm"
                   >
                     Add New Slot
                   </button>
                 </form>
               </div>
-              
+
               <div>
-                <h4 className="text-lg font-medium text-white mb-4">Current Time Slots</h4>
+                <h4 className="text-white font-medium mb-4">Current Time Slots</h4>
                 <div className="space-y-2">
                   {availableTimeSlots.map((slot, index) => (
-                    <div key={index} className="flex justify-between items-center bg-gray-800/50 p-3 rounded-md border border-gray-700">
-                      <span className="text-gray-300 text-sm">{slot}</span>
-                      <button className="bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 px-3 py-1 rounded-sm text-xs transition-colors">
+                    <div key={index} className="flex justify-between items-center glass-card p-3 rounded-lg">
+                      <span className="text-white/60 text-sm">{slot}</span>
+                      <button className="bg-red-500/10 hover:bg-red-500/15 text-red-400 border border-red-500/20 px-3 py-1 rounded-lg text-xs transition-all duration-200">
                         Remove
                       </button>
                     </div>
@@ -751,35 +712,35 @@ export default function SlotPricesPage() {
         )}
 
         {activeTab === 'price-summary' && (
-          <div className="bg-black/40 border border-gray-800 rounded-lg p-6">
+          <div className="glass-card rounded-xl p-6 animate-fadeInUp">
             <div className="flex justify-between items-center mb-6">
-              <h3 className="text-lg font-medium text-white">Price Overview</h3>
+              <h3 className="text-sm font-medium text-white/60 uppercase tracking-wider">Price Overview</h3>
               <button
                 onClick={async () => {
                   await Promise.all([fetchSlotPrices(), fetchCurrentSlotPrices()]);
                 }}
-                className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-md transition-colors text-sm"
+                className="glass-card hover:bg-white/[0.06] text-white/50 hover:text-white px-4 py-2 rounded-lg transition-all duration-200 text-sm"
               >
                 Refresh
               </button>
             </div>
 
             <div className="mb-8">
-              <h4 className="text-md font-medium text-white mb-4 flex items-center">
-                <span className="w-3 h-3 bg-orange-500 rounded mr-2"></span>
+              <h4 className="text-white font-medium mb-4 flex items-center">
+                <span className="w-2.5 h-2.5 bg-orange-500 rounded-full mr-2"></span>
                 Effective Current Price Matrix
               </h4>
-              <div className="mb-3 space-y-1 text-xs text-gray-400">
+              <div className="mb-3 space-y-1 text-[10px] text-white/20">
                 <div>Day slots: {(effectiveDaySlots.length > 0 ? effectiveDaySlots : getDaySlots(availableTimeSlots)).join(', ') || 'None'}</div>
                 <div>Night slots: {(effectiveNightSlots.length > 0 ? effectiveNightSlots : getNightSlots(availableTimeSlots)).join(', ') || 'None'}</div>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-white text-sm">
                   <thead>
-                    <tr className="border-b border-gray-700 bg-gray-800/50">
-                      <th className="text-left py-3 px-4 text-gray-400 font-medium">Time Slot</th>
+                    <tr className="border-b border-white/[0.06]">
+                      <th className="text-left py-3 px-4 text-white/30 font-medium text-xs uppercase tracking-wider">Time Slot</th>
                       {dayOrder.map(day => (
-                        <th key={day} className="text-center py-3 px-3 text-gray-400 font-medium">
+                        <th key={day} className="text-center py-3 px-3 text-white/30 font-medium text-xs uppercase tracking-wider">
                           {daysOfWeek.find(d => d.value === day)?.label.slice(0, 3) || day}
                         </th>
                       ))}
@@ -788,14 +749,14 @@ export default function SlotPricesPage() {
                   <tbody>
                     {availableTimeSlots.length === 0 ? (
                       <tr>
-                        <td colSpan={8} className="py-8 text-center text-gray-500">
+                        <td colSpan={8} className="py-8 text-center text-white/20">
                           No time slots available.
                         </td>
                       </tr>
                     ) : (
                       availableTimeSlots.map((slot) => (
-                        <tr key={slot} className="border-b border-gray-800/50 hover:bg-gray-800/30">
-                          <td className="py-3 px-4 font-medium text-gray-300">
+                        <tr key={slot} className="border-b border-white/[0.03] table-row-hover">
+                          <td className="py-3 px-4 font-medium text-white/50 text-xs">
                             {slot}
                           </td>
                           {dayOrder.map(day => {
@@ -804,12 +765,12 @@ export default function SlotPricesPage() {
                                 <td key={day} className="py-3 px-3 text-center">
                                   {priceEntry && priceEntry.price !== null ? (
                                     <span
-                                      className={`px-3 py-1 rounded text-sm font-medium ${
+                                      className={`px-3 py-1 rounded-lg text-xs font-medium transition-all duration-200 ${
                                         priceEntry.source === 'ACTIVE_TEMPORARY'
-                                          ? 'bg-orange-600/20 text-orange-300 border border-orange-500/30'
+                                          ? 'bg-orange-500/15 text-orange-300 border border-orange-500/20'
                                           : priceEntry.source === 'DEFAULT'
-                                          ? 'bg-gray-700 text-white'
-                                          : 'bg-gray-800 text-gray-300 border border-gray-700'
+                                          ? 'bg-white/[0.04] text-white/70'
+                                          : 'bg-white/[0.02] text-white/40 border border-white/[0.04]'
                                       }`}
                                       title={
                                         priceEntry.start_date
@@ -820,7 +781,7 @@ export default function SlotPricesPage() {
                                       ৳{priceEntry.price}
                                     </span>
                                   ) : (
-                                    <span className="text-gray-600">-</span>
+                                    <span className="text-white/10">-</span>
                                   )}
                                 </td>
                               );
@@ -834,42 +795,41 @@ export default function SlotPricesPage() {
             </div>
 
             {/* Legend */}
-            <div className="flex items-center gap-6 text-sm text-gray-400 mb-6">
+            <div className="flex items-center gap-6 text-sm text-white/30 mb-6">
               <div className="flex items-center gap-2">
-                <div className="px-2 py-1 rounded bg-gray-700 text-white text-xs">৳2500</div>
-                <span>Default price</span>
+                <div className="px-2 py-1 rounded-lg bg-white/[0.04] text-white/70 text-[10px]">৳2500</div>
+                <span className="text-xs">Default</span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="px-2 py-1 rounded bg-orange-600/20 text-orange-400 border border-orange-500/30 text-xs">৳3000</div>
-                <span>Custom/temporary price</span>
+                <div className="px-2 py-1 rounded-lg bg-orange-500/15 text-orange-400 border border-orange-500/20 text-[10px]">৳3000</div>
+                <span className="text-xs">Custom/temporary</span>
               </div>
-              <div className="text-gray-500 text-xs ml-4">Click any price to edit</div>
             </div>
 
             {/* Quick Stats */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="bg-gray-800/50 p-4 rounded border border-gray-700">
+              <div className="glass-card rounded-xl p-4">
                 <div className="text-center">
-                  <div className="text-sm text-gray-400 mb-1">Total Slots</div>
-                  <div className="text-lg text-white font-medium">{availableTimeSlots.length}</div>
+                  <div className="text-[10px] text-white/25 mb-1 uppercase tracking-wider">Total Slots</div>
+                  <div className="text-lg text-white font-semibold">{availableTimeSlots.length}</div>
                 </div>
               </div>
-              <div className="bg-gray-800/50 p-4 rounded border border-gray-700">
+              <div className="glass-card rounded-xl p-4">
                 <div className="text-center">
-                  <div className="text-sm text-gray-400 mb-1">Day Slots</div>
-                  <div className="text-lg text-white font-medium">{getDaySlots(availableTimeSlots).length}</div>
+                  <div className="text-[10px] text-white/25 mb-1 uppercase tracking-wider">Day Slots</div>
+                  <div className="text-lg text-white font-semibold">{getDaySlots(availableTimeSlots).length}</div>
                 </div>
               </div>
-              <div className="bg-gray-800/50 p-4 rounded border border-gray-700">
+              <div className="glass-card rounded-xl p-4">
                 <div className="text-center">
-                  <div className="text-sm text-gray-400 mb-1">Night Slots</div>
-                  <div className="text-lg text-white font-medium">{getNightSlots(availableTimeSlots).length}</div>
+                  <div className="text-[10px] text-white/25 mb-1 uppercase tracking-wider">Night Slots</div>
+                  <div className="text-lg text-white font-semibold">{getNightSlots(availableTimeSlots).length}</div>
                 </div>
               </div>
-              <div className="bg-orange-500/10 p-4 rounded border border-orange-500/30">
+              <div className="glass-card-glow rounded-xl p-4" style={{ borderColor: 'rgba(249, 115, 22, 0.15)' }}>
                 <div className="text-center">
-                  <div className="text-sm text-orange-400 mb-1">Price Entries</div>
-                  <div className="text-lg text-white font-medium">{slotPrices.length}</div>
+                  <div className="text-[10px] text-orange-400 mb-1 uppercase tracking-wider">Price Entries</div>
+                  <div className="text-lg text-white font-semibold">{slotPrices.length}</div>
                 </div>
               </div>
             </div>
