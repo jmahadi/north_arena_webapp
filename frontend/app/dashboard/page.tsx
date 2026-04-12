@@ -1,13 +1,12 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { useRouter } from 'next/navigation';
 import AdminLayout from '../components/AdminLayout';
 import DashboardCard from '../components/DashboardCard';
-import { fetchDashboardData, DashboardData } from '../api/auth';
-import Cookies from 'js-cookie';
-import axios from 'axios';
+import { DashboardData } from '../api/auth';
 import Link from 'next/link';
+import { useDashboard } from '../hooks/useApi';
 import {
   CalendarIcon,
   CurrencyDollarIcon,
@@ -16,15 +15,16 @@ import {
   PlusIcon,
   ArrowTrendingUpIcon
 } from '@heroicons/react/24/outline';
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer
-} from 'recharts';
+import dynamic from 'next/dynamic';
+
+// Lazy-load recharts - only downloaded when dashboard actually renders data
+const LazyAreaChart = dynamic(() => import('recharts').then(mod => mod.AreaChart), { ssr: false });
+const LazyArea = dynamic(() => import('recharts').then(mod => mod.Area), { ssr: false });
+const LazyXAxis = dynamic(() => import('recharts').then(mod => mod.XAxis), { ssr: false });
+const LazyYAxis = dynamic(() => import('recharts').then(mod => mod.YAxis), { ssr: false });
+const LazyCartesianGrid = dynamic(() => import('recharts').then(mod => mod.CartesianGrid), { ssr: false });
+const LazyTooltip = dynamic(() => import('recharts').then(mod => mod.Tooltip), { ssr: false });
+const LazyResponsiveContainer = dynamic(() => import('recharts').then(mod => mod.ResponsiveContainer), { ssr: false });
 
 // Consistent color palette
 const COLORS = {
@@ -52,38 +52,13 @@ const PAYMENT_COLORS: Record<string, string> = {
 };
 
 export default function DashboardPage() {
-  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const { data: dashboardData, isLoading, isRefreshing } = useDashboard();
   const router = useRouter();
 
   const formatCurrency = (amount: number) => `৳${amount.toFixed(0)}`;
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  };
-
-  useEffect(() => {
-    const token = Cookies.get('token');
-    if (!token) {
-      router.push('/login');
-    } else {
-      fetchData();
-    }
-  }, [router]);
-
-  const fetchData = async () => {
-    setIsLoading(true);
-    try {
-      const data = await fetchDashboardData();
-      setDashboardData(data);
-    } catch (error) {
-      console.error('Failed to fetch dashboard data:', error);
-      if (axios.isAxiosError(error) && error.response?.status === 401) {
-        router.push('/login');
-      }
-    } finally {
-      setIsLoading(false);
-    }
   };
 
   // Custom tooltip for charts
@@ -204,16 +179,16 @@ export default function DashboardPage() {
           <div className="glass-card rounded-xl p-6">
             <h3 className="text-sm font-medium text-white/60 mb-4 uppercase tracking-wider">Revenue Trend</h3>
             <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={revenueChartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+              <LazyResponsiveContainer width="100%" height="100%">
+                <LazyAreaChart data={revenueChartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id="revenueGradient" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor={COLORS.primary} stopOpacity={0.3}/>
                       <stop offset="95%" stopColor={COLORS.primary} stopOpacity={0}/>
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
-                  <XAxis
+                  <LazyCartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
+                  <LazyXAxis
                     dataKey="date"
                     stroke="transparent"
                     tick={{ fill: 'rgba(255,255,255,0.25)', fontSize: 10 }}
@@ -221,23 +196,23 @@ export default function DashboardPage() {
                     axisLine={false}
                     interval={4}
                   />
-                  <YAxis
+                  <LazyYAxis
                     stroke="transparent"
                     tick={{ fill: 'rgba(255,255,255,0.25)', fontSize: 10 }}
                     tickLine={false}
                     axisLine={false}
                     tickFormatter={(value) => `৳${value >= 1000 ? (value/1000).toFixed(0) + 'k' : value}`}
                   />
-                  <Tooltip content={<CustomTooltip valuePrefix="৳" />} />
-                  <Area
+                  <LazyTooltip content={<CustomTooltip valuePrefix="৳" />} />
+                  <LazyArea
                     type="monotone"
                     dataKey="revenue"
                     stroke={COLORS.primary}
                     strokeWidth={2}
                     fill="url(#revenueGradient)"
                   />
-                </AreaChart>
-              </ResponsiveContainer>
+                </LazyAreaChart>
+              </LazyResponsiveContainer>
             </div>
           </div>
 
@@ -245,16 +220,16 @@ export default function DashboardPage() {
           <div className="glass-card rounded-xl p-6">
             <h3 className="text-sm font-medium text-white/60 mb-4 uppercase tracking-wider">Booking Trend</h3>
             <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={bookingsChartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+              <LazyResponsiveContainer width="100%" height="100%">
+                <LazyAreaChart data={bookingsChartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id="bookingsGradient" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor={COLORS.success} stopOpacity={0.3}/>
                       <stop offset="95%" stopColor={COLORS.success} stopOpacity={0}/>
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
-                  <XAxis
+                  <LazyCartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
+                  <LazyXAxis
                     dataKey="date"
                     stroke="transparent"
                     tick={{ fill: 'rgba(255,255,255,0.25)', fontSize: 10 }}
@@ -262,22 +237,22 @@ export default function DashboardPage() {
                     axisLine={false}
                     interval={4}
                   />
-                  <YAxis
+                  <LazyYAxis
                     stroke="transparent"
                     tick={{ fill: 'rgba(255,255,255,0.25)', fontSize: 10 }}
                     tickLine={false}
                     axisLine={false}
                   />
-                  <Tooltip content={<CustomTooltip valueSuffix=" bookings" />} />
-                  <Area
+                  <LazyTooltip content={<CustomTooltip valueSuffix=" bookings" />} />
+                  <LazyArea
                     type="monotone"
                     dataKey="bookings"
                     stroke={COLORS.success}
                     strokeWidth={2}
                     fill="url(#bookingsGradient)"
                   />
-                </AreaChart>
-              </ResponsiveContainer>
+                </LazyAreaChart>
+              </LazyResponsiveContainer>
             </div>
           </div>
         </div>

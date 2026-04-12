@@ -8,6 +8,7 @@ import BookingMatrix from '../components/BookingMatrix';
 import BookingDetailsModal from '../components/BookingDetailsModal';
 import { fetchBookings, addBooking, updateBooking, deleteBooking, checkBookingHasTransactions } from '../api/bookings';
 import { getTransactionSummaries } from '../api/transactions';
+import { useBookings, invalidateAll } from '../hooks/useApi';
 import Cookies from 'js-cookie';
 import axios from 'axios';
 
@@ -43,17 +44,21 @@ type BookingsData = Record<string, Booking>;
 
 export default function BookingsPage() {
   const router = useRouter();
-  const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState<'left' | 'right' | false>(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [bookings, setBookings] = useState<BookingsData>({});
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedSlot, setSelectedSlot] = useState<TimeSlot | ''>('');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  const [startDate, setStartDate] = useState(() => {
+    const today = new Date();
+    return today.toISOString().split('T')[0];
+  });
+  const [endDate, setEndDate] = useState(() => {
+    const nextWeek = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    return nextWeek.toISOString().split('T')[0];
+  });
   const [selectedBookingId, setSelectedBookingId] = useState<number | null>(null);
   const [selectedBookingTransactionStatus, setSelectedBookingTransactionStatus] = useState<'PENDING' | 'PARTIAL' | 'SUCCESSFUL' | null>(null);
 
@@ -68,6 +73,9 @@ export default function BookingsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalBookingId, setModalBookingId] = useState<number | null>(null);
 
+  // SWR-powered bookings data (cached, stale-while-revalidate)
+  const { bookings, isLoading, refresh: refreshBookings, setBookings } = useBookings(startDate, endDate);
+
   // Ref to track if we're doing an incremental load (skip full page reload)
   const isIncrementalLoadRef = useRef(false);
 
@@ -75,57 +83,11 @@ export default function BookingsPage() {
     const token = Cookies.get('token');
     if (!token) {
       router.push('/login');
-    } else {
-      const today = new Date();
-      const nextWeek = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
-      setStartDate(today.toISOString().split('T')[0]);
-      setEndDate(nextWeek.toISOString().split('T')[0]);
     }
   }, [router]);
 
-  useEffect(() => {
-    if (isIncrementalLoadRef.current) {
-      isIncrementalLoadRef.current = false;
-      return;
-    }
-    if (startDate && endDate) {
-      fetchBookingsData();
-    }
-  }, [startDate, endDate]);
-
-  const fetchBookingsData = async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const [bookingsResponse, transactionSummaries] = await Promise.all([
-        fetchBookings(startDate, endDate),
-        getTransactionSummaries()
-      ]);
-
-      const bookingsData = bookingsResponse.bookingsData || {};
-
-      const transactionStatusMap = new Map();
-      transactionSummaries.forEach(summary => {
-        transactionStatusMap.set(summary.booking_id, summary.status);
-      });
-
-      Object.keys(bookingsData).forEach(key => {
-        const booking = bookingsData[key];
-        if (booking.id) {
-          booking.transaction_status = transactionStatusMap.get(booking.id) || null;
-        }
-      });
-
-      setBookings(bookingsData);
-    } catch (error) {
-      console.error('Failed to fetch bookings:', error);
-      setError('Failed to fetch bookings. Please try again.');
-      if (axios.isAxiosError(error) && error.response?.status === 401) {
-        router.push('/login');
-      }
-    } finally {
-      setIsLoading(false);
-    }
+  const fetchBookingsData = () => {
+    refreshBookings();
   };
 
   const handleDateRangeChange = () => {
@@ -257,6 +219,7 @@ export default function BookingsPage() {
         if (result.bookingsData) {
           setBookings(result.bookingsData);
         }
+        invalidateAll();  // Refresh dashboard and other cached data
         resetForm();
       } else {
         alert(result.message || "An error occurred");
@@ -308,6 +271,7 @@ export default function BookingsPage() {
           } else {
             fetchBookingsData();
           }
+          invalidateAll();
           resetForm();
         } else {
           alert(result.message || 'Failed to delete booking');
@@ -349,6 +313,7 @@ export default function BookingsPage() {
 
   const handleTransactionUpdate = () => {
     fetchBookingsData();
+    invalidateAll();
   };
 
   if (isLoading) {

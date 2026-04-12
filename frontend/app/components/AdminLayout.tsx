@@ -5,7 +5,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { logout } from '../api/auth';
-import ParticlesBackground from './ParticlesBackground';
+import dynamic from 'next/dynamic';
 import {
   ArrowRightOnRectangleIcon,
   HomeIcon,
@@ -13,6 +13,12 @@ import {
   BanknotesIcon,
   CurrencyDollarIcon
 } from '@heroicons/react/24/outline';
+
+// Lazy-load the particle animation - not critical for initial page render
+const ParticlesBackground = dynamic(() => import('./ParticlesBackground'), {
+  ssr: false,
+  loading: () => null,
+});
 
 interface AdminLayoutProps {
   children: ReactNode;

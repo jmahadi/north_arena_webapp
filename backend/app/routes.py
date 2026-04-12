@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.sql import text , func
 from sqlalchemy.orm import joinedload
-from sqlalchemy import or_, and_
+from sqlalchemy import or_, and_, case, literal
 from fastapi.responses import HTMLResponse , RedirectResponse , JSONResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.security import OAuth2PasswordRequestForm
@@ -17,6 +17,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from pydantic import ValidationError
 from enum import Enum
 import logging
+import time
+import json
 
 router = APIRouter()
 
@@ -24,6 +26,16 @@ templates = Jinja2Templates(directory="app/templates")
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 logger = logging.getLogger(__name__)
+
+# Simple in-memory cache for dashboard data (TTL-based)
+_dashboard_cache: dict = {"data": None, "timestamp": 0}
+DASHBOARD_CACHE_TTL = 60  # seconds - serve cached data for 60s
+
+
+def invalidate_dashboard_cache():
+    """Call this after any booking/transaction mutation to bust the cache."""
+    _dashboard_cache["data"] = None
+    _dashboard_cache["timestamp"] = 0
 
 
 '''
@@ -241,14 +253,19 @@ DASHBOARD ROUTE
 @router.get("/api/dashboard")
 async def dashboard(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     logger.info(f"Dashboard accessed by user: {current_user.email}")
-    
+
     if not current_user:
         logger.warning("Unauthorized access attempt to dashboard")
         raise HTTPException(status_code=401, detail="Not authenticated")
 
+    # Return cached data if still fresh
+    now = time.time()
+    if _dashboard_cache["data"] and (now - _dashboard_cache["timestamp"]) < DASHBOARD_CACHE_TTL:
+        logger.info("Returning cached dashboard data")
+        return _dashboard_cache["data"]
+
     try:
         today = datetime.now().date()
-        current_time = datetime.now()
         first_day_of_month = today.replace(day=1)
         last_month_start = (first_day_of_month - timedelta(days=1)).replace(day=1)
         seven_days_ago = today - timedelta(days=7)
@@ -256,84 +273,52 @@ async def dashboard(current_user: User = Depends(get_current_user), db: AsyncSes
         payment_types = [TransactionType.BOOKING_PAYMENT, TransactionType.SLOT_PAYMENT]
         active_booking_filter = or_(Booking.is_cancelled == False, Booking.is_cancelled.is_(None))
 
-        # Basic metrics
-        bookings_this_month = await db.execute(
-            select(func.count(Booking.id)).filter(
-                Booking.booking_date >= first_day_of_month,
-                active_booking_filter
-            )
+        # === COMBINED QUERY 1: All booking counts in ONE query ===
+        booking_counts = await db.execute(
+            select(
+                func.count(Booking.id).label('total'),
+                func.count(case((Booking.booking_date >= first_day_of_month, Booking.id))).label('this_month'),
+                func.count(case((Booking.booking_date >= today, Booking.id))).label('upcoming'),
+                func.count(case((Booking.booking_date >= seven_days_ago, Booking.id))).label('last_week'),
+                func.count(case((Booking.booking_date == today, Booking.id))).label('today'),
+            ).filter(active_booking_filter)
         )
-        bookings_this_month = bookings_this_month.scalar_one()
+        bc = booking_counts.one()
+        total_bookings = bc.total
+        bookings_this_month = bc.this_month
+        upcoming_bookings = bc.upcoming
+        bookings_last_week = bc.last_week
+        todays_bookings = bc.today
 
-        upcoming_bookings = await db.execute(
-            select(func.count(Booking.id)).filter(
-                Booking.booking_date >= today,
-                active_booking_filter
-            )
+        # === COMBINED QUERY 2: All revenue sums in ONE query ===
+        revenue_sums = await db.execute(
+            select(
+                func.coalesce(func.sum(Transaction.amount), 0).label('total'),
+                func.coalesce(func.sum(case((Transaction.created_at >= first_day_of_month, Transaction.amount), else_=literal(0))), 0).label('this_month'),
+                func.coalesce(func.sum(case((and_(Transaction.created_at >= last_month_start, Transaction.created_at < first_day_of_month), Transaction.amount), else_=literal(0))), 0).label('last_month'),
+                func.coalesce(func.sum(case((Transaction.created_at >= thirty_days_ago, Transaction.amount), else_=literal(0))), 0).label('last_30d'),
+            ).filter(Transaction.transaction_type.in_(payment_types))
         )
-        upcoming_bookings = upcoming_bookings.scalar_one()
-
-        # Revenue metrics
-        revenue_this_month = await db.execute(
-            select(func.sum(Transaction.amount))
-            .filter(
-                Transaction.created_at >= first_day_of_month,
-                Transaction.transaction_type.in_(payment_types)
-            )
-        )
-        revenue_this_month = revenue_this_month.scalar_one() or 0
-
-        revenue_last_month = await db.execute(
-            select(func.sum(Transaction.amount))
-            .filter(
-                Transaction.created_at >= last_month_start,
-                Transaction.created_at < first_day_of_month,
-                Transaction.transaction_type.in_(payment_types)
-            )
-        )
-        revenue_last_month = revenue_last_month.scalar_one() or 0
+        rv = revenue_sums.one()
+        total_revenue = float(rv.total)
+        revenue_this_month = float(rv.this_month)
+        revenue_last_month = float(rv.last_month)
+        revenue_last_30_days = float(rv.last_30d)
 
         revenue_change = ((revenue_this_month - revenue_last_month) / revenue_last_month * 100) if revenue_last_month else 100
 
-        # New enhanced metrics
-        total_bookings = await db.execute(
-            select(func.count(Booking.id)).filter(active_booking_filter)
-        )
-        total_bookings = total_bookings.scalar_one()
-
-        total_revenue = await db.execute(
-            select(func.sum(Transaction.amount))
-            .filter(Transaction.transaction_type.in_(payment_types))
-        )
-        total_revenue = total_revenue.scalar_one() or 0
-
-        bookings_last_week = await db.execute(
-            select(func.count(Booking.id)).filter(
-                Booking.booking_date >= seven_days_ago,
-                active_booking_filter
+        # === COMBINED QUERY 3: Transaction summary counts in ONE query ===
+        txn_counts = await db.execute(
+            select(
+                func.count(case((TransactionSummary.status == TransactionStatus.PENDING, TransactionSummary.booking_id))).label('pending'),
+                func.count(case((TransactionSummary.status == TransactionStatus.SUCCESSFUL, TransactionSummary.booking_id))).label('completed'),
             )
         )
-        bookings_last_week = bookings_last_week.scalar_one()
+        tc = txn_counts.one()
+        pending_transactions = tc.pending
+        completed_transactions = tc.completed
 
-        revenue_last_30_days = await db.execute(
-            select(func.sum(Transaction.amount))
-            .filter(
-                Transaction.created_at >= thirty_days_ago,
-                Transaction.transaction_type.in_(payment_types)
-            )
-        )
-        revenue_last_30_days = revenue_last_30_days.scalar_one() or 0
-
-        # Today's bookings
-        todays_bookings = await db.execute(
-            select(func.count(Booking.id)).filter(
-                Booking.booking_date == today,
-                active_booking_filter
-            )
-        )
-        todays_bookings = todays_bookings.scalar_one()
-
-        # Most popular time slots (last 30 days)
+        # === Query 4: Popular time slots (last 30 days) ===
         popular_slots = await db.execute(
             select(Booking.time_slot, func.count(Booking.id).label('count'))
             .filter(
@@ -346,7 +331,7 @@ async def dashboard(current_user: User = Depends(get_current_user), db: AsyncSes
         )
         popular_slots_data = [{"time_slot": row[0], "count": row[1]} for row in popular_slots]
 
-        # Revenue by payment method (last 30 days)
+        # === Query 5: Revenue by payment method (last 30 days) ===
         payment_breakdown = await db.execute(
             select(Transaction.payment_method, func.sum(Transaction.amount))
             .filter(
@@ -361,7 +346,7 @@ async def dashboard(current_user: User = Depends(get_current_user), db: AsyncSes
             if row[0] is not None
         ]
 
-        # Daily revenue for last 30 days (OPTIMIZED: single query with GROUP BY)
+        # === Query 6: Daily revenue for last 30 days ===
         daily_revenue_result = await db.execute(
             select(
                 func.date(Transaction.created_at).label('date'),
@@ -374,15 +359,13 @@ async def dashboard(current_user: User = Depends(get_current_user), db: AsyncSes
             .group_by(func.date(Transaction.created_at))
         )
         daily_revenue_map = {str(row[0]): float(row[1]) for row in daily_revenue_result}
-
-        # Build the daily revenue list with all 30 days (fill gaps with 0)
         daily_revenue = []
         for i in range(30):
             day = today - timedelta(days=29-i)
             day_str = day.isoformat()
             daily_revenue.append({"date": day_str, "revenue": daily_revenue_map.get(day_str, 0)})
 
-        # Daily bookings for last 30 days (OPTIMIZED: single query with GROUP BY)
+        # === Query 7: Daily bookings for last 30 days ===
         daily_bookings_result = await db.execute(
             select(
                 Booking.booking_date,
@@ -395,15 +378,13 @@ async def dashboard(current_user: User = Depends(get_current_user), db: AsyncSes
             .group_by(Booking.booking_date)
         )
         daily_bookings_map = {str(row[0]): row[1] for row in daily_bookings_result}
-
-        # Build the daily bookings list with all 30 days (fill gaps with 0)
         daily_bookings = []
         for i in range(30):
             day = today - timedelta(days=29-i)
             day_str = day.isoformat()
             daily_bookings.append({"date": day_str, "bookings": daily_bookings_map.get(day_str, 0)})
 
-        # Recent bookings (last 5)
+        # === Query 8: Recent bookings (last 5) ===
         recent_bookings = await db.execute(
             select(Booking.name, Booking.booking_date, Booking.time_slot, Booking.created_at)
             .filter(active_booking_filter)
@@ -411,41 +392,23 @@ async def dashboard(current_user: User = Depends(get_current_user), db: AsyncSes
             .limit(5)
         )
         recent_bookings_data = [{
-            "name": row[0], 
-            "booking_date": row[1].isoformat(), 
-            "time_slot": row[2], 
+            "name": row[0],
+            "booking_date": row[1].isoformat(),
+            "time_slot": row[2],
             "created_at": row[3].isoformat()
         } for row in recent_bookings]
 
-        # Pending vs completed transactions
-        pending_transactions = await db.execute(
-            select(func.count(TransactionSummary.booking_id))
-            .filter(TransactionSummary.status == TransactionStatus.PENDING)
-        )
-        pending_transactions = pending_transactions.scalar_one()
-
-        completed_transactions = await db.execute(
-            select(func.count(TransactionSummary.booking_id))
-            .filter(TransactionSummary.status == TransactionStatus.SUCCESSFUL)
-        )
-        completed_transactions = completed_transactions.scalar_one()
-
-        # Average booking value
+        # Computed metrics
         avg_booking_value = revenue_this_month / bookings_this_month if bookings_this_month > 0 else 0
-
         days_this_month = (today - first_day_of_month).days + 1
         avg_bookings_per_day = bookings_this_month / days_this_month if days_this_month > 0 else 0
-        
-        logger.info("Enhanced dashboard data successfully retrieved")
-        return {
-            # Basic metrics
+
+        result = {
             "bookings_this_month": bookings_this_month,
             "upcoming_bookings": upcoming_bookings,
             "revenue_this_month": float(revenue_this_month),
             "revenue_change": float(revenue_change),
             "avg_bookings_per_day": float(avg_bookings_per_day),
-            
-            # Enhanced metrics
             "total_bookings": total_bookings,
             "total_revenue": float(total_revenue),
             "bookings_last_week": bookings_last_week,
@@ -454,14 +417,19 @@ async def dashboard(current_user: User = Depends(get_current_user), db: AsyncSes
             "avg_booking_value": float(avg_booking_value),
             "pending_transactions": pending_transactions,
             "completed_transactions": completed_transactions,
-            
-            # Chart data
             "daily_revenue": daily_revenue,
             "daily_bookings": daily_bookings,
             "popular_time_slots": popular_slots_data,
             "payment_breakdown": payment_data,
             "recent_bookings": recent_bookings_data
         }
+
+        # Cache the result
+        _dashboard_cache["data"] = result
+        _dashboard_cache["timestamp"] = time.time()
+
+        logger.info("Dashboard data successfully retrieved (8 queries, cached)")
+        return result
     except Exception as e:
         logger.error(f"Error retrieving dashboard data: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error")
