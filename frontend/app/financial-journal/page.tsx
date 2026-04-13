@@ -1,13 +1,13 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import AdminLayout from '../components/AdminLayout';
 import {
-  getFinancialJournal,
   FinancialJournalFilters,
   FinancialJournalTransaction,
 } from '../api/transactions';
+import { useFinancialJournal } from '../hooks/useApi';
 import { format, startOfMonth, endOfMonth, subDays } from 'date-fns';
 import Cookies from 'js-cookie';
 
@@ -17,15 +17,6 @@ const TRANSACTION_TYPES = ['BOOKING_PAYMENT', 'SLOT_PAYMENT'];
 
 export default function FinancialJournalPage() {
   const router = useRouter();
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  // Data state
-  const [transactions, setTransactions] = useState<FinancialJournalTransaction[]>([]);
-  const [dailyTotals, setDailyTotals] = useState<Record<string, Record<string, number>>>({});
-  const [periodTotals, setPeriodTotals] = useState<Record<string, number>>({});
-  const [grandTotal, setGrandTotal] = useState(0);
-  const [transactionCount, setTransactionCount] = useState(0);
 
   // Filter state
   const [filters, setFilters] = useState<FinancialJournalFilters>({
@@ -43,38 +34,21 @@ export default function FinancialJournalPage() {
   // View mode
   const [viewMode, setViewMode] = useState<'all' | 'daily'>('all');
 
-  const fetchData = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const filterParams: FinancialJournalFilters = {
-        startDate: filters.startDate,
-        endDate: filters.endDate,
-        paymentMethod: selectedPaymentMethods.length > 0 ? selectedPaymentMethods.join(',') : undefined,
-        transactionType: selectedTransactionTypes.length > 0 ? selectedTransactionTypes.join(',') : undefined,
-      };
+  // SWR-powered data fetching (cached per filter combination, stale-while-revalidate)
+  const { data, isLoading, error } = useFinancialJournal(filters, selectedPaymentMethods, selectedTransactionTypes);
 
-      const data = await getFinancialJournal(filterParams);
-      setTransactions(data.transactions);
-      setDailyTotals(data.daily_totals);
-      setPeriodTotals(data.period_totals);
-      setGrandTotal(data.grand_total);
-      setTransactionCount(data.transaction_count);
-    } catch (err: any) {
-      setError(err.message || 'Failed to fetch financial journal');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [filters, selectedPaymentMethods, selectedTransactionTypes]);
+  const transactions = data?.transactions || [];
+  const dailyTotals = data?.daily_totals || {};
+  const periodTotals = data?.period_totals || {};
+  const grandTotal = data?.grand_total || 0;
+  const transactionCount = data?.transaction_count || 0;
 
   useEffect(() => {
     const token = Cookies.get('token');
     if (!token) {
       router.push('/login');
-    } else {
-      fetchData();
     }
-  }, [router, fetchData]);
+  }, [router]);
 
   // Quick date range presets
   const setQuickRange = (preset: 'today' | 'last7' | 'last30' | 'thisMonth') => {

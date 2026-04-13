@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import { format } from 'date-fns';
 import {
@@ -9,12 +9,11 @@ import {
   TransactionDetail
 } from '../types/transactions';
 import {
-  getBookingPaymentSummary,
   addTransaction,
   updateTransaction,
   deleteTransaction,
-  BookingPaymentSummary
 } from '../api/transactions';
+import { useBookingPaymentSummary, invalidateAll } from '../hooks/useApi';
 
 interface BookingDetailsModalProps {
   bookingId: number;
@@ -33,9 +32,7 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
   onClose,
   onTransactionUpdate
 }) => {
-  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [paymentSummary, setPaymentSummary] = useState<BookingPaymentSummary | null>(null);
 
   // Transaction form state
   const [transactionType, setTransactionType] = useState<TransactionType | ''>('SLOT_PAYMENT');
@@ -47,26 +44,8 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
   // Edit mode state
   const [editingTransaction, setEditingTransaction] = useState<TransactionDetail | null>(null);
 
-  const fetchPaymentSummary = useCallback(async () => {
-    if (!bookingId) return;
-
-    setIsLoading(true);
-    setError(null);
-    try {
-      const data = await getBookingPaymentSummary(bookingId);
-      setPaymentSummary(data);
-    } catch (err: any) {
-      setError(err.message || 'Failed to fetch booking details');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [bookingId]);
-
-  useEffect(() => {
-    if (isOpen && bookingId) {
-      fetchPaymentSummary();
-    }
-  }, [isOpen, bookingId, fetchPaymentSummary]);
+  // SWR-powered payment summary (cached per booking, instant on reopen)
+  const { paymentSummary, isLoading, refresh: refreshSummary } = useBookingPaymentSummary(bookingId, isOpen);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -119,7 +98,8 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
         });
       }
 
-      await fetchPaymentSummary();
+      await refreshSummary();
+      invalidateAll();  // Refresh dashboard, bookings, journal caches
       setTransactionType('SLOT_PAYMENT');
       setPaymentMethod('');
       setAmount('');
@@ -141,7 +121,8 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
 
     try {
       await deleteTransaction(transactionId);
-      await fetchPaymentSummary();
+      await refreshSummary();
+      invalidateAll();
       setEditingTransaction(null);
       if (onTransactionUpdate) {
         onTransactionUpdate();
