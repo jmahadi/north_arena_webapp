@@ -2,7 +2,10 @@
 builder = "nixpacks"
 
 [deploy]
-startCommand = "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+# Run alembic migrations before booting uvicorn so schema/triggers stay in sync
+# with the code being deployed. `alembic upgrade head` is idempotent — re-runs
+# are no-ops once the DB is at head, so safe on every restart.
+startCommand = "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT"
 healthcheckPath = "/"
 healthcheckTimeout = 100
 restartPolicyType = "on_failure"

@@ -12,9 +12,9 @@ connect_args = {"server_settings": {"statement_cache_size": "0"}}
 engine = create_async_engine(
     DATABASE_URL,
     echo=os.getenv("SQL_ECHO", "false").lower() == "true",  # Off by default, set SQL_ECHO=true to enable
-    pool_size=5,           # Maintain 5 persistent connections
-    max_overflow=10,       # Allow up to 10 extra connections under load
-    pool_timeout=30,       # Wait 30s for a connection before erroring
+    pool_size=15,          # Dashboard fans out ~8 concurrent queries; 15 steady connections lets a few users overlap without overflow
+    max_overflow=20,       # Burst capacity under spike load
+    pool_timeout=10,       # Fail fast instead of hanging requests for 30s when truly saturated
     pool_recycle=1800,     # Recycle connections every 30 min to avoid stale connections
     pool_pre_ping=True,    # Verify connections are alive before using them
 )

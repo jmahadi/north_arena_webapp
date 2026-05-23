@@ -274,6 +274,29 @@ img {
   background: rgba(249, 115, 22, 0.3);
 }
 
+/* Sleek black horizontal scrollbar for the booking matrix */
+.scrollbar-sleek::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+.scrollbar-sleek::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 4px;
+  margin: 0 4px;
+}
+.scrollbar-sleek::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.6);
+}
+.scrollbar-sleek::-webkit-scrollbar-thumb:hover {
+  background: rgba(249, 115, 22, 0.5);
+}
+.scrollbar-sleek {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) rgba(0, 0, 0, 0.4);
+}
+
 /* Table row hover */
 .table-row-hover {
   transition: all 0.2s ease;

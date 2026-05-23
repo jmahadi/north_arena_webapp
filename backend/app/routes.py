@@ -1233,11 +1233,15 @@ async def bookings(
     max_end_date = start_date + relativedelta(months=3)
     end_date = min(end_date, max_end_date)
 
-    # Query for both normal bookings and academy bookings that overlap with the date range
-    # Exclude cancelled bookings from the matrix view
+    # Query for both normal bookings and academy bookings that overlap with the date range.
+    # Joined-load TransactionSummary so the matrix can render the payment status pill
+    # without a second /transaction_summaries round-trip.
     bookings_result = await db.execute(
         select(Booking)
-        .options(joinedload(Booking.user))
+        .options(
+            joinedload(Booking.user),
+            joinedload(Booking.transaction_summary),
+        )
         .filter(
             or_(Booking.is_cancelled == False, Booking.is_cancelled == None),  # Exclude cancelled bookings
             or_(
@@ -1256,10 +1260,14 @@ async def bookings(
         )
         .order_by(Booking.booking_date, Booking.time_slot)
     )
-    bookings = bookings_result.scalars().all()
+    bookings = bookings_result.unique().scalars().all()
 
     bookings_data = {}
     for b in bookings:
+        # Pre-extract the payment status (uppercase enum name) so every key for
+        # this booking — across multiple academy dates — sees the same value.
+        txn_status = b.transaction_summary.status.name if (b.transaction_summary and b.transaction_summary.status) else None
+
         # For academy bookings, create entries for all dates in the range
         if b.booking_type == BookingType.ACADEMY:
             # Parse selected days of week if available
@@ -1287,7 +1295,8 @@ async def bookings(
                             "academy_end_date": b.academy_end_date.isoformat(),
                             "academy_days_of_week": b.academy_days_of_week,
                             "academy_notes": b.academy_notes,
-                            "booked_by": b.user.username
+                            "booked_by": b.user.username,
+                            "transaction_status": txn_status,
                         }
                 current_date += timedelta(days=1)
         else:
@@ -1300,7 +1309,8 @@ async def bookings(
                 "booking_date": b.booking_date.isoformat(),
                 "time_slot": b.time_slot,
                 "booking_type": b.booking_type.value,
-                "booked_by": b.user.username
+                "booked_by": b.user.username,
+                "transaction_status": txn_status,
             }
 
     return JSONResponse(content={"bookingsData": bookings_data})
@@ -1832,37 +1842,9 @@ async def add_transaction(
             created_at=created_at
         )
         db.add(transaction)
-        await db.flush()
-
-        summary = await db.get(TransactionSummary, booking_id)
-        if not summary:
-            summary = TransactionSummary(booking_id=booking_id, total_price=slot_price.price)
-            db.add(summary)
-
-        transactions = await db.execute(
-            select(Transaction).filter(Transaction.booking_id == booking_id)
-        )
-        transactions = transactions.scalars().all()
-
-        summary.total_paid = sum(t.amount for t in transactions if t.transaction_type in [TransactionType.BOOKING_PAYMENT, TransactionType.SLOT_PAYMENT])
-        summary.discount = sum(t.amount for t in transactions if t.transaction_type == TransactionType.DISCOUNT)
-        summary.other_adjustments = sum(t.amount for t in transactions if t.transaction_type == TransactionType.OTHER_ADJUSTMENT)
-        summary.leftover = summary.total_price - summary.total_paid - summary.discount - summary.other_adjustments
-        summary.booking_payment = sum(t.amount for t in transactions if t.transaction_type == TransactionType.BOOKING_PAYMENT)
-        summary.slot_payment = sum(t.amount for t in transactions if t.transaction_type == TransactionType.SLOT_PAYMENT)
-        summary.cash_payment = sum(t.amount for t in transactions if t.payment_method == PaymentMethod.CASH)
-        summary.bkash_payment = sum(t.amount for t in transactions if t.payment_method == PaymentMethod.BKASH)
-        
-        if not summary.booking_payment_date and transaction.transaction_type == TransactionType.BOOKING_PAYMENT:
-            summary.booking_payment_date = transaction.created_at.date()
-
-        if summary.leftover <= 0:
-            summary.status = TransactionStatus.SUCCESSFUL
-        elif summary.total_paid > 0:
-            summary.status = TransactionStatus.PARTIAL
-        else:
-            summary.status = TransactionStatus.PENDING
-
+        # The transactions_sync_summary AFTER trigger recomputes the matching
+        # transaction_summaries row (including total_price lookup if it's the
+        # first transaction for this booking). No Python-side recompute needed.
         await db.commit()
         return JSONResponse(content={"success": True, "message": "Transaction added successfully"})
     
@@ -1958,43 +1940,10 @@ async def update_transaction(
         transaction.updated_by = current_user.id
         transaction.updated_at = datetime.now(timezone.utc)
 
-        # Commit the transaction update
+        # Commit the transaction update — the transactions_sync_summary AFTER
+        # trigger recomputes the matching transaction_summaries row.
         await db.commit()
         logging.info(f"Transaction {transaction_id} updated successfully")
-        
-        # Now update the TransactionSummary
-        summary = await db.get(TransactionSummary, booking_id)
-        if summary:
-            # Get all transactions for this booking
-            transactions_result = await db.execute(
-                select(Transaction).filter(Transaction.booking_id == booking_id)
-            )
-            transactions = transactions_result.scalars().all()
-            
-            # Recalculate summary fields
-            summary.total_paid = sum(t.amount for t in transactions if t.transaction_type in [TransactionType.BOOKING_PAYMENT, TransactionType.SLOT_PAYMENT])
-            summary.discount = sum(t.amount for t in transactions if t.transaction_type == TransactionType.DISCOUNT)
-            summary.other_adjustments = sum(t.amount for t in transactions if t.transaction_type == TransactionType.OTHER_ADJUSTMENT)
-            summary.leftover = summary.total_price - summary.total_paid - summary.discount - summary.other_adjustments
-            summary.booking_payment = sum(t.amount for t in transactions if t.transaction_type == TransactionType.BOOKING_PAYMENT)
-            summary.slot_payment = sum(t.amount for t in transactions if t.transaction_type == TransactionType.SLOT_PAYMENT)
-            summary.cash_payment = sum(t.amount for t in transactions if t.payment_method == PaymentMethod.CASH)
-            summary.bkash_payment = sum(t.amount for t in transactions if t.payment_method == PaymentMethod.BKASH)
-            summary.nagad_payment = sum(t.amount for t in transactions if t.payment_method == PaymentMethod.NAGAD)
-            summary.card_payment = sum(t.amount for t in transactions if t.payment_method == PaymentMethod.CARD)
-            summary.bank_transfer_payment = sum(t.amount for t in transactions if t.payment_method == PaymentMethod.BANK_TRANSFER)
-
-            # Update status based on payments
-            if summary.leftover <= 0:
-                summary.status = TransactionStatus.SUCCESSFUL
-            elif summary.total_paid > 0:
-                summary.status = TransactionStatus.PARTIAL
-            else:
-                summary.status = TransactionStatus.PENDING
-                
-            summary.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
-            await db.commit()
-            logging.info(f"Transaction summary for booking {booking_id} updated")
 
         # Get fresh data to return
         transaction_result = await db.execute(
@@ -2065,57 +2014,11 @@ async def delete_transaction(
                 content={"success": False, "message": "Transaction not found"}
             )
 
-        # Get the booking_id before deleting the transaction
-        booking_id = transaction.booking_id
-
-        # Delete the transaction
+        # Delete the transaction — the transactions_sync_summary AFTER trigger
+        # recomputes (or deletes, if no transactions remain) the summary row.
         await db.delete(transaction)
         await db.commit()
         logging.info(f"Transaction {transaction_id} deleted")
-
-        # Update the transaction summary
-        summary = await db.get(TransactionSummary, booking_id)
-        if summary:
-            # Get all remaining transactions for this booking
-            transactions_result = await db.execute(
-                select(Transaction).filter(Transaction.booking_id == booking_id)
-            )
-            transactions = transactions_result.scalars().all()
-
-            # If no transactions left, delete the summary
-            if not transactions:
-                await db.delete(summary)
-                await db.commit()
-                logging.info(f"No transactions left for booking {booking_id}, deleted summary")
-                return JSONResponse(content={
-                    "success": True,
-                    "message": "Transaction deleted and summary removed"
-                })
-
-            # Otherwise, recalculate summary fields
-            summary.total_paid = sum(t.amount for t in transactions if t.transaction_type in [TransactionType.BOOKING_PAYMENT, TransactionType.SLOT_PAYMENT])
-            summary.discount = sum(t.amount for t in transactions if t.transaction_type == TransactionType.DISCOUNT)
-            summary.other_adjustments = sum(t.amount for t in transactions if t.transaction_type == TransactionType.OTHER_ADJUSTMENT)
-            summary.leftover = summary.total_price - summary.total_paid - summary.discount - summary.other_adjustments
-            summary.booking_payment = sum(t.amount for t in transactions if t.transaction_type == TransactionType.BOOKING_PAYMENT)
-            summary.slot_payment = sum(t.amount for t in transactions if t.transaction_type == TransactionType.SLOT_PAYMENT)
-            summary.cash_payment = sum(t.amount for t in transactions if t.payment_method == PaymentMethod.CASH)
-            summary.bkash_payment = sum(t.amount for t in transactions if t.payment_method == PaymentMethod.BKASH)
-            summary.nagad_payment = sum(t.amount for t in transactions if t.payment_method == PaymentMethod.NAGAD)
-            summary.card_payment = sum(t.amount for t in transactions if t.payment_method == PaymentMethod.CARD)
-            summary.bank_transfer_payment = sum(t.amount for t in transactions if t.payment_method == PaymentMethod.BANK_TRANSFER)
-
-            # Update status based on payments
-            if summary.leftover <= 0:
-                summary.status = TransactionStatus.SUCCESSFUL
-            elif summary.total_paid > 0:
-                summary.status = TransactionStatus.PARTIAL
-            else:
-                summary.status = TransactionStatus.PENDING
-
-            summary.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
-            await db.commit()
-            logging.info(f"Updated transaction summary for booking {booking_id}")
 
         return JSONResponse(content={
             "success": True,

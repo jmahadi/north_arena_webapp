@@ -163,7 +163,7 @@ export default function BookingMatrix({ bookings, handleCellClick, startDate, en
           </div>
         )}
 
-        <div ref={scrollContainerRef} className="overflow-x-auto scroll-smooth">
+        <div ref={scrollContainerRef} className="overflow-x-auto scroll-smooth scrollbar-sleek">
           <table className="w-full border-collapse">
             <thead>
               <tr>

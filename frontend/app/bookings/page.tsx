@@ -7,7 +7,6 @@ import BookingMatrix from '../components/BookingMatrix';
 import BookingSlotModal, { SlotBookingDraft } from '../components/BookingSlotModal';
 import DateRangeSlider from '../components/DateRangeSlider';
 import { fetchBookings, addBooking, updateBooking, deleteBooking, checkBookingHasTransactions } from '../api/bookings';
-import { getTransactionSummaries } from '../api/transactions';
 import { useBookings, invalidateAll } from '../hooks/useApi';
 import Cookies from 'js-cookie';
 import axios from 'axios';
@@ -73,25 +72,9 @@ export default function BookingsPage() {
 
   const fetchAndMergeBookings = async (fetchStart: string, fetchEnd: string) => {
     try {
-      const [bookingsResponse, transactionSummaries] = await Promise.all([
-        fetchBookings(fetchStart, fetchEnd),
-        getTransactionSummaries(),
-      ]);
-
-      const newBookingsData = bookingsResponse.bookingsData || {};
-      const transactionStatusMap = new Map();
-      transactionSummaries.forEach((summary) => {
-        transactionStatusMap.set(summary.booking_id, summary.status);
-      });
-
-      Object.keys(newBookingsData).forEach((key) => {
-        const booking = newBookingsData[key];
-        if (booking.id) {
-          booking.transaction_status = transactionStatusMap.get(booking.id) || null;
-        }
-      });
-
-      return newBookingsData;
+      // /api/bookings now returns transaction_status inline — one network call suffices.
+      const bookingsResponse = await fetchBookings(fetchStart, fetchEnd);
+      return bookingsResponse.bookingsData || {};
     } catch (error) {
       console.error('Failed to fetch bookings:', error);
       return {};

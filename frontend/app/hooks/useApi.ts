@@ -2,7 +2,6 @@ import useSWR, { mutate } from 'swr';
 import api from '../utils/axios';
 import { DashboardData } from '../api/auth';
 import {
-  getTransactionSummaries,
   getFinancialJournal,
   FinancialJournalFilters,
   FinancialJournalResponse,
@@ -45,24 +44,10 @@ export function useBookings(startDate: string, endDate: string) {
   const { data, error, isLoading, mutate: mutateBookings } = useSWR(
     key,
     async (url: string) => {
-      const [bookingsRes, summaries] = await Promise.all([
-        api.get(url),
-        getTransactionSummaries(),
-      ]);
-
-      const bookingsData = bookingsRes.data.bookingsData || {};
-
-      // Merge transaction status into bookings
-      const statusMap = new Map<number, string>();
-      summaries.forEach((s: any) => statusMap.set(s.booking_id, s.status));
-
-      Object.values(bookingsData).forEach((booking: any) => {
-        if (booking.id) {
-          booking.transaction_status = statusMap.get(booking.id) || null;
-        }
-      });
-
-      return bookingsData;
+      // /api/bookings now embeds transaction_status directly via a server-side join,
+      // so this is a single round-trip — no need to also fetch /transaction_summaries.
+      const bookingsRes = await api.get(url);
+      return bookingsRes.data.bookingsData || {};
     },
     {
       revalidateOnMount: true,
