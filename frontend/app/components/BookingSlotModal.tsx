@@ -1,0 +1,712 @@
+'use client';
+
+import React, { useState, useEffect, useMemo } from 'react';
+import { XMarkIcon } from '@heroicons/react/24/outline';
+import { format } from 'date-fns';
+import {
+  TransactionType,
+  PaymentMethod,
+  TransactionDetail,
+} from '../types/transactions';
+import {
+  addTransaction,
+  updateTransaction,
+  deleteTransaction,
+} from '../api/transactions';
+import { useBookingPaymentSummary, invalidateAll } from '../hooks/useApi';
+
+const TIME_SLOTS = [
+  '9:30 AM - 11:00 AM',
+  '11:00 AM - 12:30 PM',
+  '12:30 PM - 2:00 PM',
+  '3:00 PM - 4:30 PM',
+  '4:30 PM - 6:00 PM',
+  '6:00 PM - 7:30 PM',
+  '7:30 PM - 9:00 PM',
+  '9:00 PM - 10:30 PM',
+] as const;
+
+type TimeSlot = typeof TIME_SLOTS[number];
+
+const PAYMENT_METHODS = ['CASH', 'BKASH'] as const;
+const TRANSACTION_TYPES = ['BOOKING_PAYMENT', 'SLOT_PAYMENT'] as const;
+const DAYS_OF_WEEK = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
+
+export interface SlotBookingDraft {
+  id: number | null;
+  name: string;
+  phone: string;
+  selectedDate: string;
+  selectedSlot: TimeSlot | '';
+  bookingType: 'NORMAL' | 'ACADEMY';
+  academyStartDate: string;
+  academyEndDate: string;
+  academyDaysOfWeek: string[];
+  isBulkBooking: boolean;
+  transactionStatus: 'PENDING' | 'PARTIAL' | 'SUCCESSFUL' | null;
+}
+
+interface BookingSlotModalProps {
+  isOpen: boolean;
+  draft: SlotBookingDraft;
+  onClose: () => void;
+  onSubmit: (draft: SlotBookingDraft) => Promise<void>;
+  onDelete: (bookingId: number) => Promise<void>;
+  onStatusChange?: (bookingId: number, status: 'PENDING' | 'PARTIAL' | 'SUCCESSFUL' | null) => void;
+  onTransactionUpdate?: () => void;
+}
+
+export default function BookingSlotModal({
+  isOpen,
+  draft,
+  onClose,
+  onSubmit,
+  onDelete,
+  onStatusChange,
+  onTransactionUpdate,
+}: BookingSlotModalProps) {
+  const [name, setName] = useState(draft.name);
+  const [phone, setPhone] = useState(draft.phone);
+  const [selectedDate, setSelectedDate] = useState(draft.selectedDate);
+  const [selectedSlot, setSelectedSlot] = useState<TimeSlot | ''>(draft.selectedSlot);
+  const [bookingType, setBookingType] = useState<'NORMAL' | 'ACADEMY'>(draft.bookingType);
+  const [academyStartDate, setAcademyStartDate] = useState(draft.academyStartDate);
+  const [academyEndDate, setAcademyEndDate] = useState(draft.academyEndDate);
+  const [academyDaysOfWeek, setAcademyDaysOfWeek] = useState<string[]>(draft.academyDaysOfWeek);
+  const [isBulkBooking, setIsBulkBooking] = useState(draft.isBulkBooking);
+  const [isSavingBooking, setIsSavingBooking] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  // Payment state
+  const [transactionType, setTransactionType] = useState<TransactionType | ''>('SLOT_PAYMENT');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | ''>('');
+  const [amount, setAmount] = useState('');
+  const [isDiscountMode, setIsDiscountMode] = useState(false);
+  const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
+  const [editingTransaction, setEditingTransaction] = useState<TransactionDetail | null>(null);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+
+  const bookingId = draft.id;
+  const { paymentSummary, isLoading: isLoadingPayment, refresh: refreshSummary } = useBookingPaymentSummary(
+    bookingId,
+    isOpen && !!bookingId,
+  );
+
+  // Re-seed form fields whenever the draft changes (different slot selected)
+  useEffect(() => {
+    if (!isOpen) return;
+    setName(draft.name);
+    setPhone(draft.phone);
+    setSelectedDate(draft.selectedDate);
+    setSelectedSlot(draft.selectedSlot);
+    setBookingType(draft.bookingType);
+    setAcademyStartDate(draft.academyStartDate);
+    setAcademyEndDate(draft.academyEndDate);
+    setAcademyDaysOfWeek(draft.academyDaysOfWeek);
+    setIsBulkBooking(draft.isBulkBooking);
+    setFormError(null);
+    setPaymentError(null);
+    setEditingTransaction(null);
+    setTransactionType('SLOT_PAYMENT');
+    setPaymentMethod('');
+    setAmount('');
+    setIsDiscountMode(false);
+  }, [draft.id, draft.selectedDate, draft.selectedSlot, isOpen]);
+
+  // Lock body scroll
+  useEffect(() => {
+    if (!isOpen) return;
+    const orig = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = orig;
+    };
+  }, [isOpen]);
+
+  // Sync payment form when editing
+  useEffect(() => {
+    if (editingTransaction) {
+      const isDiscount = editingTransaction.transaction_type === 'DISCOUNT';
+      setIsDiscountMode(isDiscount);
+      setTransactionType(isDiscount ? 'DISCOUNT' : (editingTransaction.transaction_type as TransactionType));
+      setPaymentMethod((editingTransaction.payment_method as PaymentMethod) || '');
+      setAmount(editingTransaction.amount.toString());
+    }
+  }, [editingTransaction]);
+
+  const liveStatus = paymentSummary?.summary?.status ?? draft.transactionStatus;
+
+  const handleBookingSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingBooking(true);
+    setFormError(null);
+    try {
+      await onSubmit({
+        ...draft,
+        name,
+        phone,
+        selectedDate,
+        selectedSlot,
+        bookingType,
+        academyStartDate,
+        academyEndDate,
+        academyDaysOfWeek,
+        isBulkBooking,
+      });
+    } catch (err: any) {
+      setFormError(err?.message || 'Failed to save booking');
+    } finally {
+      setIsSavingBooking(false);
+    }
+  };
+
+  const handleDeleteBooking = async () => {
+    if (!bookingId) return;
+    await onDelete(bookingId);
+  };
+
+  const handleSubmitTransaction = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!bookingId) return;
+    if (!transactionType || (!isDiscountMode && !paymentMethod) || !amount) {
+      setPaymentError('Please fill in all payment fields');
+      return;
+    }
+    setIsSubmittingPayment(true);
+    setPaymentError(null);
+    try {
+      if (editingTransaction) {
+        await updateTransaction(editingTransaction.id, {
+          transaction_type: transactionType as TransactionType,
+          payment_method: isDiscountMode ? null : (paymentMethod as PaymentMethod),
+          amount: parseFloat(amount),
+        });
+      } else {
+        await addTransaction({
+          booking_id: bookingId,
+          transaction_type: transactionType as TransactionType,
+          payment_method: isDiscountMode ? null : (paymentMethod as PaymentMethod),
+          amount: parseFloat(amount),
+        });
+      }
+      const updated = await refreshSummary();
+      if (onStatusChange && updated && (updated as any).summary) {
+        onStatusChange(bookingId, (updated as any).summary.status);
+      }
+      invalidateAll();
+      setTransactionType('SLOT_PAYMENT');
+      setPaymentMethod('');
+      setAmount('');
+      setIsDiscountMode(false);
+      setEditingTransaction(null);
+      if (onTransactionUpdate) onTransactionUpdate();
+    } catch (err: any) {
+      setPaymentError(err?.message || 'Failed to save payment');
+    } finally {
+      setIsSubmittingPayment(false);
+    }
+  };
+
+  const handleDeleteTransaction = async (transactionId: number) => {
+    if (!bookingId) return;
+    if (!confirm('Delete this payment?')) return;
+    try {
+      await deleteTransaction(transactionId);
+      const updated = await refreshSummary();
+      if (onStatusChange && updated && (updated as any).summary) {
+        onStatusChange(bookingId, (updated as any).summary.status);
+      }
+      invalidateAll();
+      setEditingTransaction(null);
+      if (onTransactionUpdate) onTransactionUpdate();
+    } catch (err: any) {
+      setPaymentError(err?.message || 'Failed to delete payment');
+    }
+  };
+
+  const handleToggleDiscount = () => {
+    if (isSubmittingPayment) return;
+    const next = !isDiscountMode;
+    setIsDiscountMode(next);
+    if (next) {
+      setTransactionType('DISCOUNT');
+      setPaymentMethod('');
+    } else {
+      setTransactionType('SLOT_PAYMENT');
+    }
+  };
+
+  const handleAutoFillAmount = () => {
+    if (paymentSummary && paymentSummary.summary.leftover > 0) {
+      setAmount(paymentSummary.summary.leftover.toString());
+    }
+  };
+
+  const statusBadge = useMemo(() => {
+    const s = liveStatus?.toUpperCase();
+    if (s === 'SUCCESSFUL')
+      return <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">PAID</span>;
+    if (s === 'PARTIAL')
+      return <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-orange-500/15 text-orange-400 border border-orange-500/20">PARTIAL</span>;
+    if (bookingId)
+      return <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-red-500/15 text-red-400 border border-red-500/20">UNPAID</span>;
+    return null;
+  }, [liveStatus, bookingId]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 overflow-y-auto">
+      <div className="flex min-h-screen items-start justify-center p-4 pt-10 sm:items-center sm:pt-4">
+        <div className="fixed inset-0 bg-black/70 modal-backdrop" onClick={onClose} />
+
+        <div className="relative w-full max-w-2xl glass-card rounded-2xl shadow-2xl glow-orange animate-scaleIn border-white/[0.08]">
+          {/* Header */}
+          <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.06]">
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base font-semibold text-white">
+                  {bookingId ? (name || 'Booking') : 'New Booking'}
+                </h2>
+                {statusBadge}
+              </div>
+              <p className="text-xs text-white/30 mt-0.5">
+                {selectedDate && format(new Date(selectedDate), 'MMM dd, yyyy')}
+                {selectedSlot ? ` · ${selectedSlot}` : ''}
+              </p>
+            </div>
+            <button onClick={onClose} className="text-white/30 hover:text-white transition-colors p-1 rounded-lg hover:bg-white/[0.05]">
+              <XMarkIcon className="h-5 w-5" />
+            </button>
+          </div>
+
+          {/* Content */}
+          <div className="p-5 max-h-[78vh] overflow-y-auto grid grid-cols-1 md:grid-cols-2 gap-5">
+            {/* Booking form */}
+            <form onSubmit={handleBookingSubmit} className="space-y-3">
+              <div className="text-[10px] font-medium text-white/30 uppercase tracking-wider">
+                {bookingId ? 'Edit Booking' : 'Create Booking'}
+              </div>
+
+              <div>
+                <label className="block text-[10px] text-white/40 mb-1 uppercase tracking-wider">Type</label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setBookingType('NORMAL')}
+                    className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-medium transition-all duration-200 ${
+                      bookingType === 'NORMAL'
+                        ? 'bg-orange-500/15 text-orange-400 border border-orange-500/30'
+                        : 'bg-white/[0.02] text-white/40 border border-white/[0.06] hover:bg-white/[0.04]'
+                    }`}
+                  >
+                    Normal
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBookingType('ACADEMY')}
+                    className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-medium transition-all duration-200 ${
+                      bookingType === 'ACADEMY'
+                        ? 'bg-purple-500/15 text-purple-400 border border-purple-500/30'
+                        : 'bg-white/[0.02] text-white/40 border border-white/[0.06] hover:bg-white/[0.04]'
+                    }`}
+                  >
+                    Academy
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] text-white/40 mb-1 uppercase tracking-wider">Name</label>
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="glass-input w-full rounded-lg p-2 text-sm"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] text-white/40 mb-1 uppercase tracking-wider">Phone</label>
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  className="glass-input w-full rounded-lg p-2 text-sm"
+                  required
+                />
+              </div>
+
+              {bookingType === 'NORMAL' ? (
+                <>
+                  {!bookingId && (
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={isBulkBooking}
+                        onChange={(e) => setIsBulkBooking(e.target.checked)}
+                        className="accent-orange-500"
+                      />
+                      <span className="text-xs text-white/50">Bulk (multiple days)</span>
+                    </label>
+                  )}
+
+                  {isBulkBooking ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[10px] text-white/40 mb-1 uppercase tracking-wider">Start</label>
+                        <input
+                          type="date"
+                          value={academyStartDate}
+                          onChange={(e) => {
+                            setAcademyStartDate(e.target.value);
+                            setSelectedDate(e.target.value);
+                          }}
+                          className="glass-input w-full rounded-lg p-2 text-sm"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-white/40 mb-1 uppercase tracking-wider">End</label>
+                        <input
+                          type="date"
+                          value={academyEndDate}
+                          onChange={(e) => setAcademyEndDate(e.target.value)}
+                          min={academyStartDate}
+                          className="glass-input w-full rounded-lg p-2 text-sm"
+                          required
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="block text-[10px] text-white/40 mb-1 uppercase tracking-wider">Date</label>
+                      <input
+                        type="date"
+                        value={selectedDate}
+                        onChange={(e) => setSelectedDate(e.target.value)}
+                        className="glass-input w-full rounded-lg p-2 text-sm"
+                        required
+                      />
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] text-white/40 mb-1 uppercase tracking-wider">Academy Start</label>
+                    <input
+                      type="date"
+                      value={academyStartDate}
+                      onChange={(e) => {
+                        setAcademyStartDate(e.target.value);
+                        setSelectedDate(e.target.value);
+                      }}
+                      className="glass-input w-full rounded-lg p-2 text-sm"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-white/40 mb-1 uppercase tracking-wider">Academy End</label>
+                    <input
+                      type="date"
+                      value={academyEndDate}
+                      onChange={(e) => setAcademyEndDate(e.target.value)}
+                      min={academyStartDate}
+                      className="glass-input w-full rounded-lg p-2 text-sm"
+                      required
+                    />
+                  </div>
+                </div>
+              )}
+
+              {(bookingType === 'ACADEMY' || isBulkBooking) && (
+                <div>
+                  <label className="block text-[10px] text-white/40 mb-1 uppercase tracking-wider">Days of Week</label>
+                  <div className="flex flex-wrap gap-1">
+                    {DAYS_OF_WEEK.map((day) => {
+                      const isSelected = academyDaysOfWeek.includes(day);
+                      return (
+                        <button
+                          type="button"
+                          key={day}
+                          onClick={() => {
+                            if (isSelected) setAcademyDaysOfWeek(academyDaysOfWeek.filter((d) => d !== day));
+                            else setAcademyDaysOfWeek([...academyDaysOfWeek, day]);
+                          }}
+                          className={`px-2 py-1 rounded-md text-[10px] transition-all duration-150 ${
+                            isSelected
+                              ? 'bg-orange-500/15 text-orange-300 border border-orange-500/30'
+                              : 'bg-white/[0.02] text-white/40 border border-white/[0.06] hover:bg-white/[0.04]'
+                          }`}
+                        >
+                          {day.slice(0, 3)}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-[10px] text-white/40 mb-1 uppercase tracking-wider">Time Slot</label>
+                <select
+                  value={selectedSlot}
+                  onChange={(e) => setSelectedSlot(e.target.value as TimeSlot)}
+                  className="glass-input w-full rounded-lg p-2 text-sm"
+                  required
+                >
+                  <option value="">Select a time slot</option>
+                  {TIME_SLOTS.map((slot) => (
+                    <option key={slot} value={slot}>{slot}</option>
+                  ))}
+                </select>
+              </div>
+
+              {formError && (
+                <div className="p-2 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-xs">
+                  {formError}
+                </div>
+              )}
+
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="submit"
+                  disabled={isSavingBooking}
+                  className="btn-glow flex-1 px-3 py-2 text-xs font-medium bg-orange-600 text-white rounded-lg transition-all duration-300 disabled:opacity-50"
+                >
+                  {isSavingBooking ? 'Saving...' : bookingId ? 'Update Booking' : 'Create Booking'}
+                </button>
+                {bookingId && (
+                  <button
+                    type="button"
+                    onClick={handleDeleteBooking}
+                    className="px-3 py-2 text-xs font-medium text-red-400 rounded-lg border border-red-500/20 hover:bg-red-500/10 transition-all duration-200"
+                  >
+                    Delete
+                  </button>
+                )}
+              </div>
+            </form>
+
+            {/* Payment side */}
+            <div className="space-y-3 md:border-l md:border-white/[0.06] md:pl-5">
+              <div className="text-[10px] font-medium text-white/30 uppercase tracking-wider">
+                Payment {!bookingId && '· save booking first'}
+              </div>
+
+              {!bookingId ? (
+                <div className="text-white/30 text-xs py-6 text-center">
+                  Save the booking to manage payments.
+                </div>
+              ) : isLoadingPayment && !paymentSummary ? (
+                <div className="text-white/30 text-sm py-6 text-center">Loading...</div>
+              ) : paymentSummary ? (
+                <>
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div className="bg-white/[0.03] rounded-xl px-2 py-2.5">
+                      <div className="text-[10px] text-white/25 uppercase tracking-wider">Total</div>
+                      <div className="text-sm font-semibold text-white mt-0.5">৳{paymentSummary.summary.total_price.toLocaleString()}</div>
+                    </div>
+                    <div className="bg-white/[0.03] rounded-xl px-2 py-2.5">
+                      <div className="text-[10px] text-white/25 uppercase tracking-wider">Paid</div>
+                      <div className="text-sm font-semibold text-emerald-400 mt-0.5">৳{paymentSummary.summary.total_paid.toLocaleString()}</div>
+                    </div>
+                    <div className="bg-white/[0.03] rounded-xl px-2 py-2.5">
+                      <div className="text-[10px] text-white/25 uppercase tracking-wider">Due</div>
+                      <div className={`text-sm font-semibold mt-0.5 ${paymentSummary.summary.leftover > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+                        ৳{paymentSummary.summary.leftover.toLocaleString()}
+                      </div>
+                    </div>
+                  </div>
+
+                  {paymentError && (
+                    <div className="p-2 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-xs">
+                      {paymentError}
+                    </div>
+                  )}
+
+                  <form onSubmit={handleSubmitTransaction} className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="text-[10px] font-medium text-white/30 uppercase tracking-wider">
+                        {editingTransaction ? 'Edit Payment' : 'Add Payment'}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleToggleDiscount}
+                        disabled={isSubmittingPayment}
+                        className={`px-2 py-0.5 text-[10px] rounded-md border transition-all duration-200 ${
+                          isDiscountMode
+                            ? 'bg-orange-500/15 text-orange-300 border-orange-500/30'
+                            : 'bg-white/[0.02] text-white/30 border-white/[0.06] hover:text-white/50'
+                        }`}
+                      >
+                        Discount
+                      </button>
+                    </div>
+
+                    {!isDiscountMode ? (
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="flex rounded-lg overflow-hidden border border-white/[0.06]">
+                          {TRANSACTION_TYPES.map((type) => (
+                            <button
+                              key={type}
+                              type="button"
+                              onClick={() => setTransactionType(type)}
+                              disabled={isSubmittingPayment}
+                              className={`flex-1 px-2 py-1.5 text-xs transition-all duration-200 ${
+                                transactionType === type ? 'bg-orange-600 text-white' : 'bg-white/[0.02] text-white/30 hover:text-white/50'
+                              }`}
+                            >
+                              {type === 'BOOKING_PAYMENT' ? 'Booking' : 'Slot'}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="flex rounded-lg overflow-hidden border border-white/[0.06]">
+                          {PAYMENT_METHODS.map((method) => (
+                            <button
+                              key={method}
+                              type="button"
+                              onClick={() => setPaymentMethod(method)}
+                              disabled={isSubmittingPayment}
+                              className={`flex-1 px-2 py-1.5 text-xs transition-all duration-200 ${
+                                paymentMethod === method
+                                  ? method === 'BKASH' ? 'bg-pink-600 text-white' : 'bg-emerald-600 text-white'
+                                  : 'bg-white/[0.02] text-white/30 hover:text-white/50'
+                              }`}
+                            >
+                              {method === 'BKASH' ? 'bKash' : 'Cash'}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="px-3 py-1.5 text-xs rounded-lg border border-orange-500/30 bg-orange-500/10 text-orange-300 inline-block">
+                        Discount
+                      </div>
+                    )}
+
+                    <div className="relative">
+                      <input
+                        type="number"
+                        value={amount}
+                        onChange={(e) => setAmount(e.target.value)}
+                        placeholder="Amount"
+                        className="glass-input w-full px-2 py-1.5 text-sm rounded-lg"
+                        required
+                        min="0"
+                        step="1"
+                        disabled={isSubmittingPayment}
+                      />
+                      {paymentSummary.summary.leftover > 0 && !amount && (
+                        <button
+                          type="button"
+                          onClick={handleAutoFillAmount}
+                          className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] text-orange-400 hover:text-orange-300 px-1"
+                        >
+                          ৳{paymentSummary.summary.leftover}
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="flex gap-2 pt-1">
+                      {editingTransaction && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteTransaction(editingTransaction.id)}
+                            className="px-2 py-1 text-xs bg-red-500/10 text-red-400 border border-red-500/20 rounded-lg hover:bg-red-500/15 transition-all duration-200"
+                            disabled={isSubmittingPayment}
+                          >
+                            Delete
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditingTransaction(null)}
+                            className="px-2 py-1 text-xs bg-white/[0.03] text-white/40 rounded-lg hover:bg-white/[0.06] transition-all duration-200"
+                            disabled={isSubmittingPayment}
+                          >
+                            Cancel
+                          </button>
+                        </>
+                      )}
+                      <button
+                        type="submit"
+                        className="btn-glow ml-auto px-3 py-1 text-xs bg-orange-600 text-white rounded-lg transition-all duration-300 disabled:opacity-50"
+                        disabled={isSubmittingPayment}
+                      >
+                        {isSubmittingPayment ? 'Saving...' : editingTransaction ? 'Update' : 'Add Payment'}
+                      </button>
+                    </div>
+                  </form>
+
+                  <div className="pt-3 border-t border-white/[0.06]">
+                    <div className="text-[10px] font-medium text-white/30 uppercase tracking-wider mb-2">Payment History</div>
+                    {paymentSummary.transactions.length === 0 ? (
+                      <p className="text-white/20 text-xs text-center py-3">No payments yet</p>
+                    ) : (
+                      <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                        {paymentSummary.transactions.map((transaction) => {
+                          const isDiscount = transaction.transaction_type === 'DISCOUNT';
+                          const isAdjustment = transaction.transaction_type === 'OTHER_ADJUSTMENT';
+                          const paymentLabel = isDiscount
+                            ? 'Discount'
+                            : transaction.payment_method === 'BKASH'
+                            ? 'bKash'
+                            : transaction.payment_method === 'CASH'
+                            ? 'Cash'
+                            : (transaction.payment_method || 'Other');
+                          const typeLabel = isDiscount
+                            ? 'Discount'
+                            : isAdjustment
+                            ? 'Adjustment'
+                            : transaction.transaction_type === 'BOOKING_PAYMENT'
+                            ? 'Booking'
+                            : 'Slot';
+                          return (
+                            <div
+                              key={transaction.id}
+                              onClick={() => setEditingTransaction(transaction)}
+                              className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all duration-200 ${
+                                editingTransaction?.id === transaction.id
+                                  ? 'bg-orange-500/10 border border-orange-500/20'
+                                  : 'bg-white/[0.02] border border-white/[0.04] hover:border-white/10 hover:bg-white/[0.04]'
+                              }`}
+                            >
+                              <div>
+                                <div className="flex items-center gap-1.5">
+                                  <span
+                                    className={`text-xs font-medium ${
+                                      isDiscount || isAdjustment || !transaction.payment_method
+                                        ? 'text-orange-300'
+                                        : transaction.payment_method === 'CASH'
+                                        ? 'text-white/60'
+                                        : 'text-pink-400'
+                                    }`}
+                                  >
+                                    {paymentLabel}
+                                  </span>
+                                  <span className="text-[10px] text-white/15">·</span>
+                                  <span className="text-[10px] text-white/25">{typeLabel}</span>
+                                </div>
+                                <div className="text-[10px] text-white/20 mt-0.5">
+                                  {format(new Date(transaction.created_at), 'MMM dd, HH:mm')}
+                                </div>
+                              </div>
+                              <div className="text-sm text-white font-semibold">৳{transaction.amount.toLocaleString()}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,38 @@
+graph TD
+    Start[Customer Visits Website] --> SelectDate[Select Date]
+    SelectDate --> ViewSlots[View Available Slots]
+    ViewSlots --> SlotAvailable{Slot Available?}
+
+    SlotAvailable -->|No| ViewSlots
+    SlotAvailable -->|Yes| SelectSlot[Select Time Slot]
+
+    SelectSlot --> EnterDetails[Enter Phone Number & Name]
+    EnterDetails --> ValidatePhone{Valid Phone?}
+
+    ValidatePhone -->|No| EnterDetails
+    ValidatePhone -->|Yes| CreateBooking[Create Booking Record]
+
+    CreateBooking --> GeneratePayment[Generate bKash Payment]
+    GeneratePayment --> RedirectBkash[Redirect to bKash Checkout]
+
+    RedirectBkash --> CustomerPays[Customer Completes Payment in bKash App]
+    CustomerPays --> PaymentSuccess{Payment Successful?}
+
+    PaymentSuccess -->|No| PaymentFailed[Show Payment Failed]
+    PaymentFailed --> RetryPayment{Retry?}
+    RetryPayment -->|Yes| GeneratePayment
+    RetryPayment -->|No| CancelBooking[Cancel Booking]
+
+    PaymentSuccess -->|Yes| ExecutePayment[Execute bKash Payment]
+    ExecutePayment --> UpdateDB[Update Transaction & Booking Status]
+    UpdateDB --> SendSMS[Send Confirmation SMS]
+    SendSMS --> ShowConfirmation[Show Booking Confirmation]
+
+    ShowConfirmation --> End[Booking Complete]
+    CancelBooking --> End
+
+    style Start fill:#e1f5e1
+    style End fill:#ffe1e1
+    style CustomerPays fill:#fff4e1
+    style ShowConfirmation fill:#e1f0ff
+    style PaymentFailed fill:#ffe1e1

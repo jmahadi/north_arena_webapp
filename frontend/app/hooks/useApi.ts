@@ -75,6 +75,26 @@ export function useBookings(startDate: string, endDate: string) {
     error,
     refresh: () => mutateBookings(),
     setBookings: (newData: any) => mutateBookings(newData, { revalidate: false }),
+    // Optimistically patch transaction_status for a booking across all its matrix entries.
+    // Used after payment add/update/delete so the matrix icon updates instantly.
+    patchBookingStatus: (bookingId: number, status: 'PENDING' | 'PARTIAL' | 'SUCCESSFUL' | null) => {
+      mutateBookings(
+        (current: any) => {
+          if (!current) return current;
+          const next: any = {};
+          for (const key of Object.keys(current)) {
+            const b = current[key];
+            if (b && b.id === bookingId) {
+              next[key] = { ...b, transaction_status: status };
+            } else {
+              next[key] = b;
+            }
+          }
+          return next;
+        },
+        { revalidate: false }
+      );
+    },
   };
 }
 

@@ -20,6 +20,7 @@ interface BookingDetailsModalProps {
   isOpen: boolean;
   onClose: () => void;
   onTransactionUpdate?: () => void;
+  onStatusChange?: (bookingId: number, status: 'PENDING' | 'PARTIAL' | 'SUCCESSFUL' | null) => void;
 }
 
 // Simplified payment methods - only Cash and bKash
@@ -30,7 +31,8 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
   bookingId,
   isOpen,
   onClose,
-  onTransactionUpdate
+  onTransactionUpdate,
+  onStatusChange,
 }) => {
   const [error, setError] = useState<string | null>(null);
 
@@ -98,8 +100,12 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
         });
       }
 
-      await refreshSummary();
-      invalidateAll();  // Refresh dashboard, bookings, journal caches
+      const updated = await refreshSummary();
+      // Optimistically propagate the new status to the matrix immediately
+      if (onStatusChange && updated && (updated as any).summary) {
+        onStatusChange(bookingId, (updated as any).summary.status);
+      }
+      invalidateAll();  // Background refresh of dashboard/journal caches
       setTransactionType('SLOT_PAYMENT');
       setPaymentMethod('');
       setAmount('');
@@ -121,7 +127,10 @@ const BookingDetailsModal: React.FC<BookingDetailsModalProps> = ({
 
     try {
       await deleteTransaction(transactionId);
-      await refreshSummary();
+      const updated = await refreshSummary();
+      if (onStatusChange && updated && (updated as any).summary) {
+        onStatusChange(bookingId, (updated as any).summary.status);
+      }
       invalidateAll();
       setEditingTransaction(null);
       if (onTransactionUpdate) {
