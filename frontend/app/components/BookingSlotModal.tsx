@@ -32,6 +32,19 @@ const PAYMENT_METHODS = ['CASH', 'BKASH'] as const;
 const TRANSACTION_TYPES = ['BOOKING_PAYMENT', 'SLOT_PAYMENT'] as const;
 const DAYS_OF_WEEK = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
 
+// `/api/booking-payment-summary` returns status.value ("Successful"), while
+// `/api/bookings` returns status.name ("SUCCESSFUL"). Normalize so the matrix
+// cache always holds the uppercase form regardless of which endpoint the value
+// came from.
+function normalizeStatus(raw: any): 'PENDING' | 'PARTIAL' | 'SUCCESSFUL' | null {
+  if (!raw) return null;
+  const up = String(raw).toUpperCase();
+  if (up === 'SUCCESSFUL') return 'SUCCESSFUL';
+  if (up === 'PARTIAL') return 'PARTIAL';
+  if (up === 'PENDING') return 'PENDING';
+  return null;
+}
+
 export interface SlotBookingDraft {
   id: number | null;
   name: string;
@@ -53,7 +66,10 @@ interface BookingSlotModalProps {
   onSubmit: (draft: SlotBookingDraft) => Promise<void>;
   onDelete: (bookingId: number) => Promise<void>;
   onStatusChange?: (bookingId: number, status: 'PENDING' | 'PARTIAL' | 'SUCCESSFUL' | null) => void;
-  onTransactionUpdate?: () => void;
+  // Must return a promise that resolves once the matrix bookings cache is fully
+  // re-fetched. The modal awaits this before clearing the saving state so the
+  // user cannot close the dialog onto stale data.
+  refreshMatrix?: () => Promise<any>;
 }
 
 export default function BookingSlotModal({
@@ -63,7 +79,7 @@ export default function BookingSlotModal({
   onSubmit,
   onDelete,
   onStatusChange,
-  onTransactionUpdate,
+  refreshMatrix,
 }: BookingSlotModalProps) {
   const [name, setName] = useState(draft.name);
   const [phone, setPhone] = useState(draft.phone);
@@ -189,17 +205,24 @@ export default function BookingSlotModal({
           amount: parseFloat(amount),
         });
       }
-      const updated = await refreshSummary();
+      // Refresh both stores in parallel and AWAIT both. The matrix cache must
+      // settle before we let the user close the modal, otherwise a still-in-
+      // flight revalidation can stomp the optimistic patch and leave the icon
+      // showing the previous status.
+      const [updated] = await Promise.all([
+        refreshSummary(),
+        refreshMatrix ? refreshMatrix() : Promise.resolve(),
+      ]);
       if (onStatusChange && updated && (updated as any).summary) {
-        onStatusChange(bookingId, (updated as any).summary.status);
+        onStatusChange(bookingId, normalizeStatus((updated as any).summary.status));
       }
+      // Dashboard/journal caches are background-only; safe to fire-and-forget.
       invalidateAll();
       setTransactionType('SLOT_PAYMENT');
       setPaymentMethod('');
       setAmount('');
       setIsDiscountMode(false);
       setEditingTransaction(null);
-      if (onTransactionUpdate) onTransactionUpdate();
     } catch (err: any) {
       setPaymentError(err?.message || 'Failed to save payment');
     } finally {
@@ -212,13 +235,19 @@ export default function BookingSlotModal({
     if (!confirm('Delete this payment?')) return;
     try {
       await deleteTransaction(transactionId);
-      const updated = await refreshSummary();
+      const [updated] = await Promise.all([
+        refreshSummary(),
+        refreshMatrix ? refreshMatrix() : Promise.resolve(),
+      ]);
       if (onStatusChange && updated && (updated as any).summary) {
-        onStatusChange(bookingId, (updated as any).summary.status);
+        onStatusChange(bookingId, normalizeStatus((updated as any).summary.status));
+      } else if (onStatusChange) {
+        // No transactions left → trigger deletes the summary row. Reset to null
+        // so the matrix icon drops back to the unpaid red dot.
+        onStatusChange(bookingId, null);
       }
       invalidateAll();
       setEditingTransaction(null);
-      if (onTransactionUpdate) onTransactionUpdate();
     } catch (err: any) {
       setPaymentError(err?.message || 'Failed to delete payment');
     }

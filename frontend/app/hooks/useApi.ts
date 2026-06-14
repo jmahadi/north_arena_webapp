@@ -1,4 +1,4 @@
-import useSWR, { mutate } from 'swr';
+import useSWR, { mutate, preload } from 'swr';
 import api from '../utils/axios';
 import { DashboardData } from '../api/auth';
 import {
@@ -151,4 +151,13 @@ export function useBookingPaymentSummary(bookingId: number | null, isOpen: boole
 export function invalidateAll() {
   // Revalidate all SWR keys - triggers background refetch of dashboard, bookings, etc.
   mutate(() => true, undefined, { revalidate: true });
+}
+
+/**
+ * Warm the SWR cache for a booking's payment summary so opening the modal is
+ * instant. Safe to call on every cell hover — preload dedupes in-flight
+ * requests internally.
+ */
+export function prefetchBookingPaymentSummary(bookingId: number) {
+  preload(`booking-payment-summary:${bookingId}`, () => getBookingPaymentSummary(bookingId));
 }

@@ -13,6 +13,7 @@ from dateutil.relativedelta import relativedelta
 from .database import get_db
 from .models import User , Booking , Transaction, SlotPrice, PaymentMethod , TransactionStatus , TransactionType , TransactionSummary, DayOfWeek, BookingType
 from .auth import create_access_token, get_current_user
+import os
 from sqlalchemy.exc import SQLAlchemyError
 from pydantic import ValidationError
 from enum import Enum
@@ -27,15 +28,33 @@ templates = Jinja2Templates(directory="app/templates")
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 logger = logging.getLogger(__name__)
 
-# Simple in-memory cache for dashboard data (TTL-based)
+# Simple in-memory cache for dashboard data (TTL-based).
+# TTL defaults to 5 minutes; override via DASHBOARD_CACHE_TTL_SECONDS env if you
+# need a fresher dashboard (busy multi-admin) or a longer one (single admin).
 _dashboard_cache: dict = {"data": None, "timestamp": 0}
-DASHBOARD_CACHE_TTL = 60  # seconds - serve cached data for 60s
+DASHBOARD_CACHE_TTL = int(os.getenv("DASHBOARD_CACHE_TTL_SECONDS", "300"))
 
 
 def invalidate_dashboard_cache():
     """Call this after any booking/transaction mutation to bust the cache."""
     _dashboard_cache["data"] = None
     _dashboard_cache["timestamp"] = 0
+
+
+# Per-process cache for booking payment summaries. Keyed by booking_id, very
+# short TTL (3s) — purpose is to absorb modal-open / re-open bursts and the
+# refreshSummary call right after a transaction CUD. Invalidated explicitly on
+# any transaction add/update/delete for the booking.
+_booking_summary_cache: dict = {}
+BOOKING_SUMMARY_CACHE_TTL = int(os.getenv("BOOKING_SUMMARY_CACHE_TTL_SECONDS", "3"))
+
+
+def invalidate_booking_summary_cache(booking_id: int | None = None):
+    """Drop one booking's cached payment summary, or all if None."""
+    if booking_id is None:
+        _booking_summary_cache.clear()
+    else:
+        _booking_summary_cache.pop(booking_id, None)
 
 
 '''
@@ -1217,6 +1236,11 @@ async def bookings(
     if not current_user:
         return JSONResponse(status_code=401, content={"detail": "Not authenticated"})
 
+    # Auth-scoped private cache: instant repeat loads while SWR revalidates in
+    # the background. SWR's dedupingInterval already handles same-tab dedup;
+    # this layer helps tab-restore, back-button, and proxies.
+    _bookings_cache_headers = {"Cache-Control": "private, max-age=3, stale-while-revalidate=15"}
+
     today = datetime.now().date()
 
     if start_date:
@@ -1313,7 +1337,7 @@ async def bookings(
                 "transaction_status": txn_status,
             }
 
-    return JSONResponse(content={"bookingsData": bookings_data})
+    return JSONResponse(content={"bookingsData": bookings_data}, headers=_bookings_cache_headers)
 
 
 
@@ -1846,6 +1870,8 @@ async def add_transaction(
         # transaction_summaries row (including total_price lookup if it's the
         # first transaction for this booking). No Python-side recompute needed.
         await db.commit()
+        invalidate_booking_summary_cache(booking_id)
+        invalidate_dashboard_cache()
         return JSONResponse(content={"success": True, "message": "Transaction added successfully"})
     
     except SQLAlchemyError as db_exc:
@@ -1943,6 +1969,8 @@ async def update_transaction(
         # Commit the transaction update — the transactions_sync_summary AFTER
         # trigger recomputes the matching transaction_summaries row.
         await db.commit()
+        invalidate_booking_summary_cache(booking_id)
+        invalidate_dashboard_cache()
         logging.info(f"Transaction {transaction_id} updated successfully")
 
         # Get fresh data to return
@@ -2014,10 +2042,14 @@ async def delete_transaction(
                 content={"success": False, "message": "Transaction not found"}
             )
 
+        booking_id_for_invalidation = transaction.booking_id
+
         # Delete the transaction — the transactions_sync_summary AFTER trigger
         # recomputes (or deletes, if no transactions remain) the summary row.
         await db.delete(transaction)
         await db.commit()
+        invalidate_booking_summary_cache(booking_id_for_invalidation)
+        invalidate_dashboard_cache()
         logging.info(f"Transaction {transaction_id} deleted")
 
         return JSONResponse(content={
@@ -2187,7 +2219,24 @@ async def get_booking_payment_summary(
     """
     Get detailed payment summary for a specific booking.
     Used in the booking details modal for payment management.
+
+    Responses include a short stale-while-revalidate Cache-Control header so
+    rapid open/close/re-open patterns (e.g. browsing through bookings) can be
+    served from browser/SWR cache without re-hitting the DB.
+    Mutations call invalidate_booking_summary_cache(booking_id) to bust both
+    the in-memory cache and any client caches.
     """
+    # Auth-scoped private cache: 5s fresh, up to 30s stale-while-revalidate.
+    cache_headers = {"Cache-Control": "private, max-age=5, stale-while-revalidate=30"}
+
+    # In-memory cache (per FastAPI worker process). 3s TTL is short enough that
+    # this never serves materially stale data even without explicit busting.
+    import time as _time
+    now = _time.time()
+    cached = _booking_summary_cache.get(booking_id)
+    if cached and (now - cached["timestamp"]) < BOOKING_SUMMARY_CACHE_TTL:
+        return JSONResponse(content=cached["data"], headers=cache_headers)
+
     try:
         # Get booking with transaction summary
         booking_result = await db.execute(
@@ -2253,7 +2302,7 @@ async def get_booking_payment_summary(
             "updated_at": t.updated_at.isoformat() if t.updated_at else None
         } for t in transactions]
 
-        return JSONResponse(content={
+        payload = {
             "success": True,
             "booking": {
                 "id": booking.id,
@@ -2272,7 +2321,9 @@ async def get_booking_payment_summary(
                 "status": status
             },
             "transactions": transactions_data
-        })
+        }
+        _booking_summary_cache[booking_id] = {"data": payload, "timestamp": now}
+        return JSONResponse(content=payload, headers=cache_headers)
 
     except SQLAlchemyError as e:
         logging.error(f"Database error in get_booking_payment_summary: {str(e)}")

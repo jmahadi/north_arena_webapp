@@ -295,7 +295,7 @@ export default function BookingsPage() {
           onSubmit={handleSubmitFromModal}
           onDelete={handleDeleteFromModal}
           onStatusChange={handleStatusChange}
-          onTransactionUpdate={() => refreshBookings()}
+          refreshMatrix={async () => { await refreshBookings(); }}
         />
       )}
     </AdminLayout>

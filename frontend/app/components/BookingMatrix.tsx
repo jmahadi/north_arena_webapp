@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
+import { prefetchBookingPaymentSummary } from '../hooks/useApi';
 
 const TIME_SLOTS = [
   "9:30 AM - 11:00 AM",
@@ -52,6 +53,26 @@ export default function BookingMatrix({ bookings, handleCellClick, startDate, en
   const scrollDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const hasUserScrolledRef = useRef(false);
   const lastScrollLeftRef = useRef(0);
+  // Debounce prefetch so a quick swipe across the grid doesn't fan out N
+  // requests; a 120ms dwell is enough to filter out incidental hovers.
+  const prefetchTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const prefetchedRef = useRef<Set<number>>(new Set());
+
+  const handleCellHover = useCallback((bookingId: number | undefined) => {
+    if (!bookingId || prefetchedRef.current.has(bookingId)) return;
+    if (prefetchTimerRef.current) clearTimeout(prefetchTimerRef.current);
+    prefetchTimerRef.current = setTimeout(() => {
+      prefetchBookingPaymentSummary(bookingId);
+      prefetchedRef.current.add(bookingId);
+    }, 120);
+  }, []);
+
+  const handleCellLeave = useCallback(() => {
+    if (prefetchTimerRef.current) {
+      clearTimeout(prefetchTimerRef.current);
+      prefetchTimerRef.current = null;
+    }
+  }, []);
 
   const handleScroll = useCallback(() => {
     const container = scrollContainerRef.current;
@@ -206,6 +227,8 @@ export default function BookingMatrix({ bookings, handleCellClick, startDate, en
                             : 'bg-white/[0.02] hover:bg-white/[0.06] border border-white/[0.04] hover:border-orange-500/20'}
                         `}
                         onClick={() => handleCellClick(dateString, slot)}
+                        onMouseEnter={() => handleCellHover(booking?.id)}
+                        onMouseLeave={handleCellLeave}
                       >
                         {booking ? (
                           <>
