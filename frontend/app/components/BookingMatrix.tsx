@@ -188,13 +188,15 @@ export default function BookingMatrix({ bookings, handleCellClick, startDate, en
           <table className="w-full border-collapse">
             <thead>
               <tr>
-                <th className="sticky left-0 z-10 bg-transparent p-1 text-[10px] text-white/30 font-normal w-20"></th>
+                {/* Sticky left column narrower on mobile (w-12) so the matrix
+                    has more horizontal room for actual date columns. */}
+                <th className="sticky left-0 z-10 bg-transparent p-1 text-[10px] text-white/30 font-normal w-12 sm:w-20"></th>
                 {dateRange.map((date) => (
-                  <th key={date.toISOString()} className="p-1 text-center w-24 min-w-[96px]">
-                  <div className="text-[13px] font-semibold text-white/60">
+                  <th key={date.toISOString()} className="p-0.5 sm:p-1 text-center min-w-[62px] sm:min-w-[96px]">
+                  <div className="text-[11px] sm:text-[13px] font-semibold text-white/60">
                     {date.toLocaleDateString('en-US', { weekday: 'short' })}
                   </div>
-                  <div className="text-xs text-white/25">
+                  <div className="text-[10px] sm:text-xs text-white/25">
                     {date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                   </div>
                 </th>
@@ -204,7 +206,8 @@ export default function BookingMatrix({ bookings, handleCellClick, startDate, en
           <tbody>
             {TIME_SLOTS.map((slot) => (
               <tr key={slot}>
-                <td className="sticky left-0 z-10 p-1 pr-2 text-right text-xs text-white/30 whitespace-nowrap font-medium w-20">
+                {/* Time column: smaller text, narrower width on mobile. */}
+                <td className="sticky left-0 z-10 p-0.5 sm:p-1 pr-1 sm:pr-2 text-right text-[10px] sm:text-xs text-white/30 whitespace-nowrap font-medium w-12 sm:w-20">
                   {getCompactTimeSlot(slot)}
                 </td>
                 {dateRange.map((date) => {
@@ -214,12 +217,12 @@ export default function BookingMatrix({ bookings, handleCellClick, startDate, en
                   return (
                     <td
                       key={`${dateString}_${slot}`}
-                      className="p-0.5 w-24 min-w-[96px]"
+                      className="p-0.5 min-w-[62px] sm:min-w-[96px]"
                     >
                       <div
                         className={`
-                          h-12 rounded-lg cursor-pointer transition-all duration-200
-                          flex flex-col justify-center items-center px-1 relative
+                          h-10 sm:h-12 rounded-md sm:rounded-lg cursor-pointer transition-all duration-200
+                          flex flex-col justify-center items-center px-0.5 sm:px-1 relative
                           ${booking
                             ? (booking.booking_type === 'ACADEMY'
                                 ? 'bg-purple-600/80 hover:bg-purple-500/90 shadow-lg shadow-purple-500/10'
@@ -232,7 +235,7 @@ export default function BookingMatrix({ bookings, handleCellClick, startDate, en
                       >
                         {booking ? (
                           <>
-                            <div className="text-[13px] font-semibold text-white truncate w-full text-center px-1 overflow-hidden">
+                            <div className="text-[10px] sm:text-[13px] font-semibold text-white truncate w-full text-center overflow-hidden">
                               {booking.name}
                             </div>
                             {/* Payment status corner indicator */}
@@ -242,7 +245,7 @@ export default function BookingMatrix({ bookings, handleCellClick, startDate, en
                               const isPartial = status === 'PARTIAL';
                               return (
                                 <div
-                                  className={`absolute top-0 right-0 w-4 h-4 flex items-center justify-center rounded-bl-lg rounded-tr-lg ${
+                                  className={`absolute top-0 right-0 w-3 h-3 sm:w-4 sm:h-4 flex items-center justify-center rounded-bl-md rounded-tr-md sm:rounded-bl-lg sm:rounded-tr-lg ${
                                     isPaid
                                       ? 'bg-emerald-500'
                                       : isPartial
@@ -264,7 +267,7 @@ export default function BookingMatrix({ bookings, handleCellClick, startDate, en
                             })()}
                           </>
                         ) : (
-                          <div className="text-xs text-white/15">Open</div>
+                          <div className="text-[10px] sm:text-xs text-white/15">Open</div>
                         )}
                       </div>
                     </td>

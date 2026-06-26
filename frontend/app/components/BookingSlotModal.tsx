@@ -345,26 +345,30 @@ export default function BookingSlotModal({
                 </div>
               </div>
 
-              <div>
-                <label className="block text-[10px] text-white/40 mb-1 uppercase tracking-wider">Name</label>
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="glass-input w-full rounded-lg p-2 text-sm"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10px] text-white/40 mb-1 uppercase tracking-wider">Phone</label>
-                <input
-                  type="tel"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  className="glass-input w-full rounded-lg p-2 text-sm"
-                  required
-                />
+              {/* Name + Phone share a row on every screen — saves ~50px of
+                  vertical space so the payment section sits above the fold
+                  on mobile without a scroll. */}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[10px] text-white/40 mb-1 uppercase tracking-wider">Name</label>
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="glass-input w-full rounded-lg p-2 text-sm"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-white/40 mb-1 uppercase tracking-wider">Phone</label>
+                  <input
+                    type="tel"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    className="glass-input w-full rounded-lg p-2 text-sm"
+                    required
+                  />
+                </div>
               </div>
 
               {bookingType === 'NORMAL' ? (
@@ -409,15 +413,32 @@ export default function BookingSlotModal({
                       </div>
                     </div>
                   ) : (
-                    <div>
-                      <label className="block text-[10px] text-white/40 mb-1 uppercase tracking-wider">Date</label>
-                      <input
-                        type="date"
-                        value={selectedDate}
-                        onChange={(e) => setSelectedDate(e.target.value)}
-                        className="glass-input w-full rounded-lg p-2 text-sm"
-                        required
-                      />
+                    // Normal single-day booking: date + slot share one row.
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[10px] text-white/40 mb-1 uppercase tracking-wider">Date</label>
+                        <input
+                          type="date"
+                          value={selectedDate}
+                          onChange={(e) => setSelectedDate(e.target.value)}
+                          className="glass-input w-full rounded-lg p-2 text-sm"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-white/40 mb-1 uppercase tracking-wider">Time Slot</label>
+                        <select
+                          value={selectedSlot}
+                          onChange={(e) => setSelectedSlot(e.target.value as TimeSlot)}
+                          className="glass-input w-full rounded-lg p-2 text-sm"
+                          required
+                        >
+                          <option value="">Select…</option>
+                          {TIME_SLOTS.map((slot) => (
+                            <option key={slot} value={slot}>{slot}</option>
+                          ))}
+                        </select>
+                      </div>
                     </div>
                   )}
                 </>
@@ -478,20 +499,25 @@ export default function BookingSlotModal({
                 </div>
               )}
 
-              <div>
-                <label className="block text-[10px] text-white/40 mb-1 uppercase tracking-wider">Time Slot</label>
-                <select
-                  value={selectedSlot}
-                  onChange={(e) => setSelectedSlot(e.target.value as TimeSlot)}
-                  className="glass-input w-full rounded-lg p-2 text-sm"
-                  required
-                >
-                  <option value="">Select a time slot</option>
-                  {TIME_SLOTS.map((slot) => (
-                    <option key={slot} value={slot}>{slot}</option>
-                  ))}
-                </select>
-              </div>
+              {/* Time slot is rendered inline next to Date for normal
+                  single-day bookings (above). Bulk + academy bookings span
+                  multiple days, so the slot picker stays on its own row. */}
+              {(bookingType === 'ACADEMY' || isBulkBooking) && (
+                <div>
+                  <label className="block text-[10px] text-white/40 mb-1 uppercase tracking-wider">Time Slot</label>
+                  <select
+                    value={selectedSlot}
+                    onChange={(e) => setSelectedSlot(e.target.value as TimeSlot)}
+                    className="glass-input w-full rounded-lg p-2 text-sm"
+                    required
+                  >
+                    <option value="">Select a time slot</option>
+                    {TIME_SLOTS.map((slot) => (
+                      <option key={slot} value={slot}>{slot}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               {formError && (
                 <div className="p-2 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-xs">
@@ -529,9 +555,26 @@ export default function BookingSlotModal({
                 <div className="text-white/30 text-xs py-6 text-center">
                   Save the booking to manage payments.
                 </div>
-              ) : isLoadingPayment && !paymentSummary ? (
-                <div className="text-white/30 text-sm py-6 text-center">Loading...</div>
-              ) : paymentSummary ? (
+              ) : !paymentSummary ? (
+                // Covers both: initial fetch in flight, AND error case where
+                // SWR settled with no data. Previously the error case rendered
+                // null, leaving just a bare "Payment" header — the modal looked
+                // half-broken. Now we always show feedback + an explicit retry.
+                <div className="py-6 text-center space-y-2">
+                  <div className="text-white/30 text-sm">
+                    {isLoadingPayment ? 'Loading payment summary…' : 'Could not load payment summary'}
+                  </div>
+                  {!isLoadingPayment && (
+                    <button
+                      type="button"
+                      onClick={() => refreshSummary()}
+                      className="text-xs text-orange-400 hover:text-orange-300 underline-offset-2 hover:underline"
+                    >
+                      Retry
+                    </button>
+                  )}
+                </div>
+              ) : (
                 <>
                   <div className="grid grid-cols-3 gap-2 text-center">
                     <div className="bg-white/[0.03] rounded-xl px-2 py-2.5">
@@ -731,7 +774,7 @@ export default function BookingSlotModal({
                     )}
                   </div>
                 </>
-              ) : null}
+              )}
             </div>
           </div>
         </div>
