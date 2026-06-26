@@ -6,7 +6,11 @@ builder = "nixpacks"
 # with the code being deployed. `alembic upgrade head` is idempotent — re-runs
 # are no-ops once the DB is at head, so safe on every restart.
 startCommand = "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT"
-healthcheckPath = "/"
-healthcheckTimeout = 100
+# Probe the actual health endpoint defined in app/main.py. The root path "/"
+# returns 404 (no route registered), which Railway scores as a failed probe.
+healthcheckPath = "/health"
+# Bump to 300s so a slow first-time migration (e.g. backfill loop on a cold
+# Supabase instance) has room to finish before uvicorn binds the port.
+healthcheckTimeout = 300
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
