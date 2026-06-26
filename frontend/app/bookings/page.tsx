@@ -176,8 +176,12 @@ export default function BookingsPage() {
         if (result.bookingsData) {
           setBookings(result.bookingsData);
         }
+        // Await a fresh /api/bookings round-trip before closing the modal so
+        // we never close onto a still-in-flight refetch that would re-render
+        // the matrix without the just-saved slot. invalidateAll() is fire-
+        // and-forget for dashboard/journal — those are non-critical.
         invalidateAll();
-        refreshBookings();
+        await refreshBookings();
         setIsModalOpen(false);
         setModalDraft(null);
       } else {
@@ -223,10 +227,11 @@ export default function BookingsPage() {
       if (result.success) {
         if (result.bookingsData) {
           setBookings(result.bookingsData);
-        } else {
-          refreshBookings();
         }
         invalidateAll();
+        // Always await — the deletion must be reflected in the matrix before
+        // the modal closes.
+        await refreshBookings();
         setIsModalOpen(false);
         setModalDraft(null);
       } else {

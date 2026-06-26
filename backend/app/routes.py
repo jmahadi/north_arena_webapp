@@ -1236,10 +1236,11 @@ async def bookings(
     if not current_user:
         return JSONResponse(status_code=401, content={"detail": "Not authenticated"})
 
-    # Auth-scoped private cache: instant repeat loads while SWR revalidates in
-    # the background. SWR's dedupingInterval already handles same-tab dedup;
-    # this layer helps tab-restore, back-button, and proxies.
-    _bookings_cache_headers = {"Cache-Control": "private, max-age=3, stale-while-revalidate=15"}
+    # Tell the browser NOT to cache this response. We rely on SWR's in-memory
+    # cache for fast re-renders; a browser-level HTTP cache would intercept
+    # the post-mutation refetch and return a stale response (without the
+    # newly added booking), making new slots appear "missing" until refresh.
+    _bookings_cache_headers = {"Cache-Control": "private, no-store"}
 
     today = datetime.now().date()
 
@@ -2226,8 +2227,12 @@ async def get_booking_payment_summary(
     Mutations call invalidate_booking_summary_cache(booking_id) to bust both
     the in-memory cache and any client caches.
     """
-    # Auth-scoped private cache: 5s fresh, up to 30s stale-while-revalidate.
-    cache_headers = {"Cache-Control": "private, max-age=5, stale-while-revalidate=30"}
+    # Server-side in-memory cache handles burst-read amortization with
+    # explicit busting on transaction CUD. We deliberately do NOT enable
+    # browser HTTP caching here — after a payment add/update/delete, the
+    # client's refresh round-trip must hit the server (not the browser cache)
+    # to read the just-updated summary.
+    cache_headers = {"Cache-Control": "private, no-store"}
 
     # In-memory cache (per FastAPI worker process). 3s TTL is short enough that
     # this never serves materially stale data even without explicit busting.
