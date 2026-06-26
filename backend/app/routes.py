@@ -10,10 +10,11 @@ from fastapi.security import OAuth2PasswordRequestForm
 from passlib.context import CryptContext
 from datetime import datetime , timedelta  ,timezone , date
 from dateutil.relativedelta import relativedelta
-from .database import get_db
+from .database import get_db, SessionLocal
 from .models import User , Booking , Transaction, SlotPrice, PaymentMethod , TransactionStatus , TransactionType , TransactionSummary, DayOfWeek, BookingType
 from .auth import create_access_token, get_current_user
 import os
+import asyncio
 from sqlalchemy.exc import SQLAlchemyError
 from pydantic import ValidationError
 from enum import Enum
@@ -270,7 +271,7 @@ DASHBOARD ROUTE
 '''
 
 @router.get("/api/dashboard")
-async def dashboard(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def dashboard(current_user: User = Depends(get_current_user)):
     logger.info(f"Dashboard accessed by user: {current_user.email}")
 
     if not current_user:
@@ -292,130 +293,109 @@ async def dashboard(current_user: User = Depends(get_current_user), db: AsyncSes
         payment_types = [TransactionType.BOOKING_PAYMENT, TransactionType.SLOT_PAYMENT]
         active_booking_filter = or_(Booking.is_cancelled == False, Booking.is_cancelled.is_(None))
 
-        # === COMBINED QUERY 1: All booking counts in ONE query ===
-        booking_counts = await db.execute(
-            select(
-                func.count(Booking.id).label('total'),
-                func.count(case((Booking.booking_date >= first_day_of_month, Booking.id))).label('this_month'),
-                func.count(case((Booking.booking_date >= today, Booking.id))).label('upcoming'),
-                func.count(case((Booking.booking_date >= seven_days_ago, Booking.id))).label('last_week'),
-                func.count(case((Booking.booking_date == today, Booking.id))).label('today'),
-            ).filter(active_booking_filter)
+        # Run each query in its own session so they can execute concurrently —
+        # AsyncSession itself doesn't permit overlapping operations. With the
+        # pool sized at 15/+20 this fans out cleanly.
+        async def _run(query, extract):
+            async with SessionLocal() as session:
+                return extract(await session.execute(query))
+
+        q_booking_counts = select(
+            func.count(Booking.id).label('total'),
+            func.count(case((Booking.booking_date >= first_day_of_month, Booking.id))).label('this_month'),
+            func.count(case((Booking.booking_date >= today, Booking.id))).label('upcoming'),
+            func.count(case((Booking.booking_date >= seven_days_ago, Booking.id))).label('last_week'),
+            func.count(case((Booking.booking_date == today, Booking.id))).label('today'),
+        ).filter(active_booking_filter)
+
+        q_revenue_sums = select(
+            func.coalesce(func.sum(Transaction.amount), 0).label('total'),
+            func.coalesce(func.sum(case((Transaction.created_at >= first_day_of_month, Transaction.amount), else_=literal(0))), 0).label('this_month'),
+            func.coalesce(func.sum(case((and_(Transaction.created_at >= last_month_start, Transaction.created_at < first_day_of_month), Transaction.amount), else_=literal(0))), 0).label('last_month'),
+            func.coalesce(func.sum(case((Transaction.created_at >= thirty_days_ago, Transaction.amount), else_=literal(0))), 0).label('last_30d'),
+        ).filter(Transaction.transaction_type.in_(payment_types))
+
+        q_txn_counts = select(
+            func.count(case((TransactionSummary.status == TransactionStatus.PENDING, TransactionSummary.booking_id))).label('pending'),
+            func.count(case((TransactionSummary.status == TransactionStatus.SUCCESSFUL, TransactionSummary.booking_id))).label('completed'),
         )
-        bc = booking_counts.one()
+
+        q_popular_slots = (
+            select(Booking.time_slot, func.count(Booking.id).label('count'))
+            .filter(Booking.booking_date >= thirty_days_ago, active_booking_filter)
+            .group_by(Booking.time_slot)
+            .order_by(func.count(Booking.id).desc())
+            .limit(5)
+        )
+
+        q_payment_breakdown = (
+            select(Transaction.payment_method, func.sum(Transaction.amount))
+            .filter(Transaction.created_at >= thirty_days_ago, Transaction.transaction_type.in_(payment_types))
+            .group_by(Transaction.payment_method)
+        )
+
+        q_daily_revenue = (
+            select(func.date(Transaction.created_at).label('date'), func.sum(Transaction.amount).label('revenue'))
+            .filter(Transaction.created_at >= thirty_days_ago, Transaction.transaction_type.in_(payment_types))
+            .group_by(func.date(Transaction.created_at))
+        )
+
+        q_daily_bookings = (
+            select(Booking.booking_date, func.count(Booking.id).label('count'))
+            .filter(Booking.booking_date >= thirty_days_ago, active_booking_filter)
+            .group_by(Booking.booking_date)
+        )
+
+        q_recent_bookings = (
+            select(Booking.name, Booking.booking_date, Booking.time_slot, Booking.created_at)
+            .filter(active_booking_filter)
+            .order_by(Booking.created_at.desc())
+            .limit(5)
+        )
+
+        (
+            bc, rv, tc,
+            popular_slots_data, payment_data,
+            daily_revenue_map, daily_bookings_map, recent_bookings_data,
+        ) = await asyncio.gather(
+            _run(q_booking_counts, lambda r: r.one()),
+            _run(q_revenue_sums, lambda r: r.one()),
+            _run(q_txn_counts, lambda r: r.one()),
+            _run(q_popular_slots, lambda r: [{"time_slot": row[0], "count": row[1]} for row in r]),
+            _run(q_payment_breakdown, lambda r: [{"method": row[0].value, "amount": float(row[1])} for row in r if row[0] is not None]),
+            _run(q_daily_revenue, lambda r: {str(row[0]): float(row[1]) for row in r}),
+            _run(q_daily_bookings, lambda r: {str(row[0]): row[1] for row in r}),
+            _run(q_recent_bookings, lambda r: [{
+                "name": row[0],
+                "booking_date": row[1].isoformat(),
+                "time_slot": row[2],
+                "created_at": row[3].isoformat(),
+            } for row in r]),
+        )
+
         total_bookings = bc.total
         bookings_this_month = bc.this_month
         upcoming_bookings = bc.upcoming
         bookings_last_week = bc.last_week
         todays_bookings = bc.today
 
-        # === COMBINED QUERY 2: All revenue sums in ONE query ===
-        revenue_sums = await db.execute(
-            select(
-                func.coalesce(func.sum(Transaction.amount), 0).label('total'),
-                func.coalesce(func.sum(case((Transaction.created_at >= first_day_of_month, Transaction.amount), else_=literal(0))), 0).label('this_month'),
-                func.coalesce(func.sum(case((and_(Transaction.created_at >= last_month_start, Transaction.created_at < first_day_of_month), Transaction.amount), else_=literal(0))), 0).label('last_month'),
-                func.coalesce(func.sum(case((Transaction.created_at >= thirty_days_ago, Transaction.amount), else_=literal(0))), 0).label('last_30d'),
-            ).filter(Transaction.transaction_type.in_(payment_types))
-        )
-        rv = revenue_sums.one()
         total_revenue = float(rv.total)
         revenue_this_month = float(rv.this_month)
         revenue_last_month = float(rv.last_month)
         revenue_last_30_days = float(rv.last_30d)
-
         revenue_change = ((revenue_this_month - revenue_last_month) / revenue_last_month * 100) if revenue_last_month else 100
 
-        # === COMBINED QUERY 3: Transaction summary counts in ONE query ===
-        txn_counts = await db.execute(
-            select(
-                func.count(case((TransactionSummary.status == TransactionStatus.PENDING, TransactionSummary.booking_id))).label('pending'),
-                func.count(case((TransactionSummary.status == TransactionStatus.SUCCESSFUL, TransactionSummary.booking_id))).label('completed'),
-            )
-        )
-        tc = txn_counts.one()
         pending_transactions = tc.pending
         completed_transactions = tc.completed
 
-        # === Query 4: Popular time slots (last 30 days) ===
-        popular_slots = await db.execute(
-            select(Booking.time_slot, func.count(Booking.id).label('count'))
-            .filter(
-                Booking.booking_date >= thirty_days_ago,
-                active_booking_filter
-            )
-            .group_by(Booking.time_slot)
-            .order_by(func.count(Booking.id).desc())
-            .limit(5)
-        )
-        popular_slots_data = [{"time_slot": row[0], "count": row[1]} for row in popular_slots]
-
-        # === Query 5: Revenue by payment method (last 30 days) ===
-        payment_breakdown = await db.execute(
-            select(Transaction.payment_method, func.sum(Transaction.amount))
-            .filter(
-                Transaction.created_at >= thirty_days_ago,
-                Transaction.transaction_type.in_(payment_types)
-            )
-            .group_by(Transaction.payment_method)
-        )
-        payment_data = [
-            {"method": row[0].value, "amount": float(row[1])}
-            for row in payment_breakdown
-            if row[0] is not None
-        ]
-
-        # === Query 6: Daily revenue for last 30 days ===
-        daily_revenue_result = await db.execute(
-            select(
-                func.date(Transaction.created_at).label('date'),
-                func.sum(Transaction.amount).label('revenue')
-            )
-            .filter(
-                Transaction.created_at >= thirty_days_ago,
-                Transaction.transaction_type.in_(payment_types)
-            )
-            .group_by(func.date(Transaction.created_at))
-        )
-        daily_revenue_map = {str(row[0]): float(row[1]) for row in daily_revenue_result}
+        # Densify daily series so the chart always shows 30 contiguous days.
         daily_revenue = []
-        for i in range(30):
-            day = today - timedelta(days=29-i)
-            day_str = day.isoformat()
-            daily_revenue.append({"date": day_str, "revenue": daily_revenue_map.get(day_str, 0)})
-
-        # === Query 7: Daily bookings for last 30 days ===
-        daily_bookings_result = await db.execute(
-            select(
-                Booking.booking_date,
-                func.count(Booking.id).label('count')
-            )
-            .filter(
-                Booking.booking_date >= thirty_days_ago,
-                active_booking_filter
-            )
-            .group_by(Booking.booking_date)
-        )
-        daily_bookings_map = {str(row[0]): row[1] for row in daily_bookings_result}
         daily_bookings = []
         for i in range(30):
-            day = today - timedelta(days=29-i)
+            day = today - timedelta(days=29 - i)
             day_str = day.isoformat()
+            daily_revenue.append({"date": day_str, "revenue": daily_revenue_map.get(day_str, 0)})
             daily_bookings.append({"date": day_str, "bookings": daily_bookings_map.get(day_str, 0)})
-
-        # === Query 8: Recent bookings (last 5) ===
-        recent_bookings = await db.execute(
-            select(Booking.name, Booking.booking_date, Booking.time_slot, Booking.created_at)
-            .filter(active_booking_filter)
-            .order_by(Booking.created_at.desc())
-            .limit(5)
-        )
-        recent_bookings_data = [{
-            "name": row[0],
-            "booking_date": row[1].isoformat(),
-            "time_slot": row[2],
-            "created_at": row[3].isoformat()
-        } for row in recent_bookings]
 
         # Computed metrics
         avg_booking_value = revenue_this_month / bookings_this_month if bookings_this_month > 0 else 0
