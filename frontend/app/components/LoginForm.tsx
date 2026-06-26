@@ -29,8 +29,12 @@ const LoginForm = () => {
       const data = await login(email, password);
       console.log('Login successful:', data);
 
+      // Cookie expiry must match the backend's ACCESS_TOKEN_EXPIRE_MINUTES
+      // (currently 30 days). Previously hard-coded to 1/24 (1 hour) — that
+      // dropped the browser cookie after 60 min regardless of how long the
+      // JWT itself was valid for, forcing a re-login every hour.
       Cookies.set('token', data.access_token, {
-        expires: 1/24,
+        expires: 30,           // 30 days, matches backend ACCESS_TOKEN_EXPIRE_MINUTES default
         sameSite: 'strict'
       });
       console.log('Token stored in cookie');
