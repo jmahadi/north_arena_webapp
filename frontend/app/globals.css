@@ -274,27 +274,33 @@ img {
   background: rgba(249, 115, 22, 0.3);
 }
 
-/* Sleek black horizontal scrollbar for the booking matrix */
+/* Dark-orange horizontal scrollbar for the booking matrix. Deliberately chunky
+   and high-contrast so it's obvious and easy to grab; the matrix adds bottom
+   padding so this bar never overlaps the last row of slots. */
 .scrollbar-sleek::-webkit-scrollbar {
-  height: 8px;
-  width: 8px;
+  height: 12px;
+  width: 12px;
 }
 .scrollbar-sleek::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.4);
-  border-radius: 4px;
-  margin: 0 4px;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 6px;
+  margin: 0 6px;
 }
 .scrollbar-sleek::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
-  border-radius: 4px;
-  border: 1px solid rgba(0, 0, 0, 0.6);
+  background: #c2410c; /* dark orange (orange-700) */
+  border-radius: 6px;
+  border: 2px solid rgba(0, 0, 0, 0.5);
+  background-clip: padding-box;
 }
 .scrollbar-sleek::-webkit-scrollbar-thumb:hover {
-  background: rgba(249, 115, 22, 0.5);
+  background: #ea580c; /* orange-600 — brighter on hover */
+}
+.scrollbar-sleek::-webkit-scrollbar-thumb:active {
+  background: #f97316; /* orange-500 — brightest while dragging */
 }
 .scrollbar-sleek {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.15) rgba(0, 0, 0, 0.4);
+  scrollbar-width: auto;
+  scrollbar-color: #c2410c rgba(0, 0, 0, 0.5);
 }
 
 /* Table row hover */

@@ -45,6 +45,18 @@ function normalizeStatus(raw: any): 'PENDING' | 'PARTIAL' | 'SUCCESSFUL' | null 
   return null;
 }
 
+export interface CancelledSlotEntry {
+  id: number;
+  name: string;
+  phone: string;
+  booking_type: 'NORMAL' | 'ACADEMY';
+  transaction_status?: 'PENDING' | 'PARTIAL' | 'SUCCESSFUL' | null;
+  total_price: number;
+  total_paid: number;
+  leftover: number;
+  cancelled_at?: string | null;
+}
+
 export interface SlotBookingDraft {
   id: number | null;
   name: string;
@@ -57,6 +69,12 @@ export interface SlotBookingDraft {
   academyDaysOfWeek: string[];
   isBulkBooking: boolean;
   transactionStatus: 'PENDING' | 'PARTIAL' | 'SUCCESSFUL' | null;
+  // True when the draft represents an already-cancelled booking (opened from the
+  // retained-money overlay) — the form flips to a view/restore mode.
+  isCancelled?: boolean;
+  // Cancelled-but-paid bookings that also sit on this slot (shown as a banner so
+  // a re-booked slot surfaces both its live booking and its cancelled history).
+  cancelledOnSlot?: CancelledSlotEntry[];
 }
 
 interface BookingSlotModalProps {
@@ -65,6 +83,8 @@ interface BookingSlotModalProps {
   onClose: () => void;
   onSubmit: (draft: SlotBookingDraft) => Promise<void>;
   onDelete: (bookingId: number) => Promise<void>;
+  onCancel?: (bookingId: number, restore?: boolean) => Promise<void>;
+  onOpenCancelled?: (entry: CancelledSlotEntry) => void;
   onStatusChange?: (bookingId: number, status: 'PENDING' | 'PARTIAL' | 'SUCCESSFUL' | null) => void;
   // Must return a promise that resolves once the matrix bookings cache is fully
   // re-fetched. The modal awaits this before clearing the saving state so the
@@ -78,6 +98,8 @@ export default function BookingSlotModal({
   onClose,
   onSubmit,
   onDelete,
+  onCancel,
+  onOpenCancelled,
   onStatusChange,
   refreshMatrix,
 }: BookingSlotModalProps) {
@@ -179,6 +201,19 @@ export default function BookingSlotModal({
   const handleDeleteBooking = async () => {
     if (!bookingId) return;
     await onDelete(bookingId);
+  };
+
+  const isCancelled = !!draft.isCancelled;
+  const cancelledOnSlot = draft.cancelledOnSlot || [];
+
+  const handleCancelBooking = async () => {
+    if (!bookingId || !onCancel) return;
+    await onCancel(bookingId, false);
+  };
+
+  const handleRestoreBooking = async () => {
+    if (!bookingId || !onCancel) return;
+    await onCancel(bookingId, true);
   };
 
   const handleSubmitTransaction = async (e: React.FormEvent) => {
@@ -298,6 +333,11 @@ export default function BookingSlotModal({
                   {bookingId ? (name || 'Booking') : 'New Booking'}
                 </h2>
                 {statusBadge}
+                {isCancelled && (
+                  <span className="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-red-500/15 text-red-400 border border-red-500/30">
+                    CANCELLED
+                  </span>
+                )}
               </div>
               <p className="text-xs text-white/30 mt-0.5">
                 {selectedDate && format(new Date(selectedDate), 'MMM dd, yyyy')}
@@ -308,6 +348,56 @@ export default function BookingSlotModal({
               <XMarkIcon className="h-5 w-5" />
             </button>
           </div>
+
+          {/* Banners span the full width above the two-column body */}
+          {(isCancelled || cancelledOnSlot.length > 0) && (
+            <div className="px-5 pt-4 space-y-2">
+              {isCancelled && (
+                <div className="flex items-center justify-between gap-3 p-3 rounded-lg bg-red-500/10 border border-red-500/20">
+                  <div className="text-xs text-red-300">
+                    This booking is <span className="font-semibold">cancelled</span>. Its payments are kept on the books.
+                    You can review/refund below or restore the slot.
+                  </div>
+                  {onCancel && (
+                    <button
+                      type="button"
+                      onClick={handleRestoreBooking}
+                      className="shrink-0 px-3 py-1.5 text-xs font-medium text-emerald-300 rounded-lg border border-emerald-500/30 hover:bg-emerald-500/10 transition-all duration-200"
+                    >
+                      Restore
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {!isCancelled && cancelledOnSlot.length > 0 && (
+                <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 space-y-2">
+                  <div className="text-[11px] font-medium text-amber-300/90 uppercase tracking-wider">
+                    Cancelled bookings on this slot (money retained)
+                  </div>
+                  {cancelledOnSlot.map((c) => (
+                    <div key={c.id} className="flex items-center justify-between gap-3 text-xs">
+                      <div className="min-w-0">
+                        <span className="text-white/70 font-medium line-through truncate">{c.name}</span>
+                        <span className="text-white/30"> · </span>
+                        <span className="text-emerald-300">৳{c.total_paid.toLocaleString()} paid</span>
+                        {c.leftover > 0 && <span className="text-white/30"> · ৳{c.leftover.toLocaleString()} due</span>}
+                      </div>
+                      {onOpenCancelled && (
+                        <button
+                          type="button"
+                          onClick={() => onOpenCancelled(c)}
+                          className="shrink-0 text-amber-300 hover:text-amber-200 underline-offset-2 hover:underline"
+                        >
+                          View
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Content */}
           <div className="p-5 max-h-[78vh] overflow-y-auto grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -525,22 +615,56 @@ export default function BookingSlotModal({
                 </div>
               )}
 
-              <div className="flex gap-2 pt-1">
-                <button
-                  type="submit"
-                  disabled={isSavingBooking}
-                  className="btn-glow flex-1 px-3 py-2 text-xs font-medium bg-orange-600 text-white rounded-lg transition-all duration-300 disabled:opacity-50"
-                >
-                  {isSavingBooking ? 'Saving...' : bookingId ? 'Update Booking' : 'Create Booking'}
-                </button>
-                {bookingId && (
-                  <button
-                    type="button"
-                    onClick={handleDeleteBooking}
-                    className="px-3 py-2 text-xs font-medium text-red-400 rounded-lg border border-red-500/20 hover:bg-red-500/10 transition-all duration-200"
-                  >
-                    Delete
-                  </button>
+              <div className="flex flex-wrap gap-2 pt-1">
+                {isCancelled ? (
+                  // Cancelled view: restoring / deleting only. Editing a cancelled
+                  // booking's details isn't offered — restore it first.
+                  <>
+                    {onCancel && (
+                      <button
+                        type="button"
+                        onClick={handleRestoreBooking}
+                        className="btn-glow flex-1 px-3 py-2 text-xs font-medium bg-emerald-600 text-white rounded-lg transition-all duration-300"
+                      >
+                        Restore Booking
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleDeleteBooking}
+                      className="px-3 py-2 text-xs font-medium text-red-400 rounded-lg border border-red-500/20 hover:bg-red-500/10 transition-all duration-200"
+                    >
+                      Delete
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="submit"
+                      disabled={isSavingBooking}
+                      className="btn-glow flex-1 px-3 py-2 text-xs font-medium bg-orange-600 text-white rounded-lg transition-all duration-300 disabled:opacity-50"
+                    >
+                      {isSavingBooking ? 'Saving...' : bookingId ? 'Update Booking' : 'Create Booking'}
+                    </button>
+                    {bookingId && onCancel && (
+                      <button
+                        type="button"
+                        onClick={handleCancelBooking}
+                        className="px-3 py-2 text-xs font-medium text-amber-300 rounded-lg border border-amber-500/25 hover:bg-amber-500/10 transition-all duration-200"
+                      >
+                        Mark Cancelled
+                      </button>
+                    )}
+                    {bookingId && (
+                      <button
+                        type="button"
+                        onClick={handleDeleteBooking}
+                        className="px-3 py-2 text-xs font-medium text-red-400 rounded-lg border border-red-500/20 hover:bg-red-500/10 transition-all duration-200"
+                      >
+                        Delete
+                      </button>
+                    )}
+                  </>
                 )}
               </div>
             </form>

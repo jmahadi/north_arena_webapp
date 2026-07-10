@@ -6,7 +6,7 @@ import AdminLayout from '../components/AdminLayout';
 import BookingMatrix from '../components/BookingMatrix';
 import BookingSlotModal, { SlotBookingDraft } from '../components/BookingSlotModal';
 import DateRangeSlider from '../components/DateRangeSlider';
-import { fetchBookings, addBooking, updateBooking, deleteBooking, checkBookingHasTransactions } from '../api/bookings';
+import { fetchBookings, addBooking, updateBooking, deleteBooking, cancelBooking, checkBookingHasTransactions } from '../api/bookings';
 import { useBookings, invalidateAll } from '../hooks/useApi';
 import Cookies from 'js-cookie';
 import axios from 'axios';
@@ -61,7 +61,7 @@ export default function BookingsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalDraft, setModalDraft] = useState<SlotBookingDraft | null>(null);
 
-  const { bookings, isLoading, refresh: refreshBookings, setBookings, patchBookingStatus } = useBookings(startDate, endDate);
+  const { bookings, cancelled, isLoading, refresh: refreshBookings, setMatrix, mergeMatrix, patchBookingStatus } = useBookings(startDate, endDate);
 
   useEffect(() => {
     const token = Cookies.get('token');
@@ -72,12 +72,12 @@ export default function BookingsPage() {
 
   const fetchAndMergeBookings = async (fetchStart: string, fetchEnd: string) => {
     try {
-      // /api/bookings now returns transaction_status inline — one network call suffices.
-      const bookingsResponse = await fetchBookings(fetchStart, fetchEnd);
-      return bookingsResponse.bookingsData || {};
+      // /api/bookings returns transaction_status inline plus cancelledData — one call suffices.
+      const res = await fetchBookings(fetchStart, fetchEnd);
+      return { bookingsData: res.bookingsData || {}, cancelledData: res.cancelledData || {} };
     } catch (error) {
       console.error('Failed to fetch bookings:', error);
-      return {};
+      return { bookingsData: {}, cancelledData: {} };
     }
   };
 
@@ -86,8 +86,8 @@ export default function BookingsPage() {
     setIsLoadingMore('left');
     const newStartStr = addDays(startDate, -7);
     const prevWeekEndStr = addDays(startDate, -1);
-    const newBookings = await fetchAndMergeBookings(newStartStr, prevWeekEndStr);
-    setBookings((prev: any) => ({ ...newBookings, ...prev }));
+    const { bookingsData, cancelledData } = await fetchAndMergeBookings(newStartStr, prevWeekEndStr);
+    mergeMatrix(bookingsData, cancelledData, true);
     setStartDate(newStartStr);
     setIsLoadingMore(false);
   };
@@ -97,8 +97,8 @@ export default function BookingsPage() {
     setIsLoadingMore('right');
     const newEndStr = addDays(endDate, 7);
     const nextWeekStartStr = addDays(endDate, 1);
-    const newBookings = await fetchAndMergeBookings(nextWeekStartStr, newEndStr);
-    setBookings((prev: any) => ({ ...prev, ...newBookings }));
+    const { bookingsData, cancelledData } = await fetchAndMergeBookings(nextWeekStartStr, newEndStr);
+    mergeMatrix(bookingsData, cancelledData, false);
     setEndDate(newEndStr);
     setIsLoadingMore(false);
   };
@@ -112,6 +112,7 @@ export default function BookingsPage() {
   // always see the current status.
   const handleCellClick = (date: string, slot: TimeSlot) => {
     const booking = bookings[`${date}_${slot}`] as Booking | undefined;
+    const cancelledOnSlot = (cancelled[`${date}_${slot}`] as any[]) || [];
     if (booking) {
       setModalDraft({
         id: booking.id,
@@ -125,6 +126,8 @@ export default function BookingsPage() {
         academyDaysOfWeek: booking.academy_days_of_week ? booking.academy_days_of_week.split(',') : DEFAULT_DAYS,
         isBulkBooking: false,
         transactionStatus: booking.transaction_status || null,
+        isCancelled: false,
+        cancelledOnSlot,
       });
     } else {
       setModalDraft({
@@ -139,8 +142,31 @@ export default function BookingsPage() {
         academyDaysOfWeek: DEFAULT_DAYS,
         isBulkBooking: false,
         transactionStatus: null,
+        isCancelled: false,
+        cancelledOnSlot,
       });
     }
+    setIsModalOpen(true);
+  };
+
+  // Open a specific cancelled booking (from the overlay list) to view/manage its
+  // retained payments or restore it.
+  const openCancelledBooking = (entry: any, date: string, slot: TimeSlot) => {
+    setModalDraft({
+      id: entry.id,
+      name: entry.name,
+      phone: entry.phone,
+      selectedDate: date,
+      selectedSlot: slot,
+      bookingType: entry.booking_type || 'NORMAL',
+      academyStartDate: '',
+      academyEndDate: '',
+      academyDaysOfWeek: DEFAULT_DAYS,
+      isBulkBooking: false,
+      transactionStatus: entry.transaction_status || null,
+      isCancelled: true,
+      cancelledOnSlot: [],
+    });
     setIsModalOpen(true);
   };
 
@@ -174,7 +200,7 @@ export default function BookingsPage() {
 
       if (result.success) {
         if (result.bookingsData) {
-          setBookings(result.bookingsData);
+          setMatrix(result.bookingsData, result.cancelledData);
         }
         // Await a fresh /api/bookings round-trip before closing the modal so
         // we never close onto a still-in-flight refetch that would re-render
@@ -198,39 +224,24 @@ export default function BookingsPage() {
     }
   };
 
+  // Permanent delete — removes the booking AND its money records. Reserved for
+  // mistakes/test data. For "customer paid then cancelled", use Cancel instead.
   const handleDeleteFromModal = async (bookingId: number) => {
     try {
       const hasTransactions = await checkBookingHasTransactions(bookingId);
-      let retainPayments = true;
+      const msg = hasTransactions
+        ? 'PERMANENTLY DELETE this booking and ALL its payment records?\n\n' +
+          'This wipes the money from the financial journal too. If money was collected, ' +
+          'use "Mark Cancelled" instead to keep the payment on the books.'
+        : 'Permanently delete this booking?';
+      if (!confirm(msg)) return;
 
-      if (hasTransactions) {
-        const userChoice = confirm(
-          'This booking has payment records.\n\n' +
-          'Click OK to cancel the booking but RETAIN payment records for accounting.\n' +
-          'Click Cancel to abort deletion.'
-        );
-        if (!userChoice) return;
-
-        const hardDelete = confirm(
-          'Do you also want to DELETE the payment records?\n\n' +
-          'Click OK to permanently delete ALL payment records (not recommended).\n' +
-          'Click Cancel to keep payment records for financial journal.'
-        );
-        retainPayments = !hardDelete;
-      } else {
-        const confirmDelete = confirm('Are you sure you want to delete this booking?');
-        if (!confirmDelete) return;
-        retainPayments = false;
-      }
-
-      const result = await deleteBooking(bookingId, startDate, endDate, retainPayments);
+      const result = await deleteBooking(bookingId, startDate, endDate, false);
       if (result.success) {
         if (result.bookingsData) {
-          setBookings(result.bookingsData);
+          setMatrix(result.bookingsData, (result as any).cancelledData);
         }
         invalidateAll();
-        // Always await — the deletion must be reflected in the matrix before
-        // the modal closes.
         await refreshBookings();
         setIsModalOpen(false);
         setModalDraft(null);
@@ -243,6 +254,34 @@ export default function BookingsPage() {
         router.push('/login');
       } else {
         alert('An error occurred while deleting the booking');
+      }
+    }
+  };
+
+  // Soft cancel — keeps transactions + summary. If money was paid, the slot
+  // stays on the matrix as a "cancelled but paid" overlay. Pass restore=true to
+  // reverse a cancellation.
+  const handleCancelFromModal = async (bookingId: number, restore: boolean = false) => {
+    try {
+      if (!restore && !confirm('Mark this booking as cancelled? Any payment collected stays on the books.')) return;
+      const result = await cancelBooking(bookingId, startDate, endDate, restore);
+      if (result.success) {
+        setMatrix(result.bookingsData, result.cancelledData);
+        invalidateAll();
+        await refreshBookings();
+        setIsModalOpen(false);
+        setModalDraft(null);
+      } else {
+        alert(result.message || 'Failed to update booking');
+      }
+    } catch (error) {
+      console.error('Failed to cancel/restore booking:', error);
+      if (axios.isAxiosError(error) && error.response?.status === 401) {
+        router.push('/login');
+      } else if (axios.isAxiosError(error) && error.response?.status === 409) {
+        alert(error.response.data?.message || 'This slot is already booked.');
+      } else {
+        alert('An error occurred while updating the booking');
       }
     }
   };
@@ -283,6 +322,7 @@ export default function BookingsPage() {
 
         <BookingMatrix
           bookings={bookings}
+          cancelled={cancelled}
           handleCellClick={handleCellClick}
           startDate={startDate}
           endDate={endDate}
@@ -299,6 +339,8 @@ export default function BookingsPage() {
           onClose={() => { setIsModalOpen(false); setModalDraft(null); }}
           onSubmit={handleSubmitFromModal}
           onDelete={handleDeleteFromModal}
+          onCancel={handleCancelFromModal}
+          onOpenCancelled={(entry) => openCancelledBooking(entry, liveDraft.selectedDate, liveDraft.selectedSlot as TimeSlot)}
           onStatusChange={handleStatusChange}
           refreshMatrix={async () => { await refreshBookings(); }}
         />

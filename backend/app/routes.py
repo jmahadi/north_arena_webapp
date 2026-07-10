@@ -60,6 +60,118 @@ def invalidate_booking_summary_cache(booking_id: int | None = None):
 
 '''
 --------------------
+MATRIX RESPONSE HELPER
+--------------------
+'''
+
+def _expand_booking_dates(b):
+    """Yield (date, key_suffix) for every matrix cell a booking occupies.
+
+    Normal bookings occupy a single date; academy bookings expand across their
+    date range, honouring the selected days-of-week.
+    """
+    if b.booking_type == BookingType.ACADEMY and b.academy_start_date and b.academy_end_date:
+        selected_days = None
+        if b.academy_days_of_week:
+            selected_days = [d.strip().upper() for d in b.academy_days_of_week.split(',')]
+        current = b.academy_start_date
+        while current <= b.academy_end_date:
+            if not selected_days or current.strftime('%A').upper() in selected_days:
+                yield current
+            current += timedelta(days=1)
+    else:
+        yield b.booking_date
+
+
+async def build_matrix_response(db: AsyncSession, start_date: date, end_date: date):
+    """Build the matrix payload for a date range.
+
+    Returns (bookings_data, cancelled_data):
+      - bookings_data: active (non-cancelled) bookings, keyed "YYYY-MM-DD_slot".
+      - cancelled_data: cancelled bookings that still hold money (total_paid > 0),
+        keyed the same way but each value is a LIST — a slot can accumulate more
+        than one cancelled-but-paid booking over its lifetime, and it can also
+        have a live booking sitting on top of it.
+    """
+    result = await db.execute(
+        select(Booking)
+        .options(
+            joinedload(Booking.user),
+            joinedload(Booking.transaction_summary),
+        )
+        .filter(
+            or_(
+                and_(
+                    Booking.booking_type == BookingType.NORMAL,
+                    Booking.booking_date.between(start_date, end_date),
+                ),
+                and_(
+                    Booking.booking_type == BookingType.ACADEMY,
+                    Booking.academy_start_date <= end_date,
+                    Booking.academy_end_date >= start_date,
+                ),
+            )
+        )
+        .order_by(Booking.booking_date, Booking.time_slot)
+    )
+    bookings = result.unique().scalars().all()
+
+    bookings_data: dict = {}
+    cancelled_data: dict = {}
+
+    for b in bookings:
+        summary = b.transaction_summary
+        txn_status = summary.status.name if (summary and summary.status) else None
+        is_cancelled = bool(getattr(b, 'is_cancelled', False))
+        total_paid = float(summary.total_paid) if summary and summary.total_paid else 0.0
+
+        for current in _expand_booking_dates(b):
+            if not (start_date <= current <= end_date):
+                continue
+            key = f"{current.isoformat()}_{b.time_slot}"
+
+            if is_cancelled:
+                # Only surface cancelled bookings that still hold money — a
+                # plain cancelled/empty slot should just look open.
+                if total_paid <= 0:
+                    continue
+                cancelled_data.setdefault(key, []).append({
+                    "id": b.id,
+                    "name": b.name,
+                    "phone": b.phone,
+                    "booking_type": b.booking_type.value,
+                    "transaction_status": txn_status,
+                    "total_price": float(summary.total_price) if summary else 0.0,
+                    "total_paid": total_paid,
+                    "leftover": float(summary.leftover) if summary else 0.0,
+                    "cancelled_at": b.cancelled_at.isoformat() if b.cancelled_at else None,
+                })
+                continue
+
+            entry = {
+                "id": b.id,
+                "name": b.name,
+                "phone": b.phone,
+                "booking_date": current.isoformat(),
+                "time_slot": b.time_slot,
+                "booking_type": b.booking_type.value,
+                "booked_by": b.user.username if b.user else "Unknown",
+                "transaction_status": txn_status,
+            }
+            if b.booking_type == BookingType.ACADEMY:
+                entry.update({
+                    "academy_start_date": b.academy_start_date.isoformat() if b.academy_start_date else None,
+                    "academy_end_date": b.academy_end_date.isoformat() if b.academy_end_date else None,
+                    "academy_days_of_week": b.academy_days_of_week,
+                    "academy_notes": b.academy_notes,
+                })
+            bookings_data[key] = entry
+
+    return bookings_data, cancelled_data
+
+
+'''
+--------------------
 ACADEMY BOOKING HELPER FUNCTIONS
 --------------------
 '''
@@ -306,6 +418,9 @@ async def dashboard(current_user: User = Depends(get_current_user)):
             func.count(case((Booking.booking_date >= today, Booking.id))).label('upcoming'),
             func.count(case((Booking.booking_date >= seven_days_ago, Booking.id))).label('last_week'),
             func.count(case((Booking.booking_date == today, Booking.id))).label('today'),
+            func.count(case((Booking.booking_date >= thirty_days_ago, Booking.id))).label('last_30d'),
+            func.count(case((and_(Booking.booking_type == BookingType.ACADEMY, Booking.booking_date >= first_day_of_month), Booking.id))).label('academy_this_month'),
+            func.count(case((and_(Booking.booking_type == BookingType.NORMAL, Booking.booking_date >= first_day_of_month), Booking.id))).label('normal_this_month'),
         ).filter(active_booking_filter)
 
         q_revenue_sums = select(
@@ -313,11 +428,23 @@ async def dashboard(current_user: User = Depends(get_current_user)):
             func.coalesce(func.sum(case((Transaction.created_at >= first_day_of_month, Transaction.amount), else_=literal(0))), 0).label('this_month'),
             func.coalesce(func.sum(case((and_(Transaction.created_at >= last_month_start, Transaction.created_at < first_day_of_month), Transaction.amount), else_=literal(0))), 0).label('last_month'),
             func.coalesce(func.sum(case((Transaction.created_at >= thirty_days_ago, Transaction.amount), else_=literal(0))), 0).label('last_30d'),
+            func.coalesce(func.sum(case((Transaction.created_at >= today, Transaction.amount), else_=literal(0))), 0).label('today'),
         ).filter(Transaction.transaction_type.in_(payment_types))
 
-        q_txn_counts = select(
-            func.count(case((TransactionSummary.status == TransactionStatus.PENDING, TransactionSummary.booking_id))).label('pending'),
-            func.count(case((TransactionSummary.status == TransactionStatus.SUCCESSFUL, TransactionSummary.booking_id))).label('completed'),
+        # Summary aggregates joined to bookings so payment-status counts and
+        # outstanding dues reflect only LIVE bookings, while retained money from
+        # cancelled bookings is tallied separately.
+        q_txn_counts = (
+            select(
+                func.count(case((and_(active_booking_filter, TransactionSummary.status == TransactionStatus.PENDING), TransactionSummary.booking_id))).label('pending'),
+                func.count(case((and_(active_booking_filter, TransactionSummary.status == TransactionStatus.SUCCESSFUL), TransactionSummary.booking_id))).label('completed'),
+                func.count(case((and_(active_booking_filter, TransactionSummary.status == TransactionStatus.PARTIAL), TransactionSummary.booking_id))).label('partial'),
+                func.coalesce(func.sum(case((active_booking_filter, TransactionSummary.leftover), else_=literal(0))), 0).label('outstanding_dues'),
+                func.coalesce(func.sum(case((Booking.is_cancelled == True, TransactionSummary.total_paid), else_=literal(0))), 0).label('cancelled_retained'),
+                func.count(case((and_(Booking.is_cancelled == True, TransactionSummary.total_paid > 0), TransactionSummary.booking_id))).label('cancelled_paid_count'),
+            )
+            .select_from(TransactionSummary)
+            .join(Booking, Booking.id == TransactionSummary.booking_id)
         )
 
         q_popular_slots = (
@@ -383,10 +510,19 @@ async def dashboard(current_user: User = Depends(get_current_user)):
         revenue_this_month = float(rv.this_month)
         revenue_last_month = float(rv.last_month)
         revenue_last_30_days = float(rv.last_30d)
+        revenue_today = float(rv.today)
         revenue_change = ((revenue_this_month - revenue_last_month) / revenue_last_month * 100) if revenue_last_month else 100
 
         pending_transactions = tc.pending
         completed_transactions = tc.completed
+        partial_transactions = tc.partial
+        outstanding_dues = float(tc.outstanding_dues)
+        cancelled_retained_revenue = float(tc.cancelled_retained)
+        cancelled_paid_count = tc.cancelled_paid_count
+
+        # Occupancy over the last 30 days: 8 slots/day across 30 days = 240 slot-days.
+        SLOTS_PER_DAY = 8
+        occupancy_rate = (bc.last_30d / (SLOTS_PER_DAY * 30) * 100) if bc.last_30d else 0
 
         # Densify daily series so the chart always shows 30 contiguous days.
         daily_revenue = []
@@ -416,6 +552,14 @@ async def dashboard(current_user: User = Depends(get_current_user)):
             "avg_booking_value": float(avg_booking_value),
             "pending_transactions": pending_transactions,
             "completed_transactions": completed_transactions,
+            "partial_transactions": partial_transactions,
+            "revenue_today": revenue_today,
+            "outstanding_dues": outstanding_dues,
+            "occupancy_rate": float(occupancy_rate),
+            "cancelled_retained_revenue": cancelled_retained_revenue,
+            "cancelled_paid_count": cancelled_paid_count,
+            "academy_bookings_this_month": bc.academy_this_month,
+            "normal_bookings_this_month": bc.normal_this_month,
             "daily_revenue": daily_revenue,
             "daily_bookings": daily_bookings,
             "popular_time_slots": popular_slots_data,
@@ -1200,6 +1344,87 @@ async def delete_booking(
 
 '''
 --------------------
+CANCEL / RESTORE BOOKING ROUTE
+--------------------
+'''
+
+@router.post("/api/cancel_booking/{booking_id}", response_class=JSONResponse)
+async def cancel_booking(
+    booking_id: int,
+    start_date: str = Query(None),
+    end_date: str = Query(None),
+    restore: bool = Query(False),  # true → un-cancel (bring the slot back to life)
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Mark a booking as cancelled WITHOUT touching its money.
+
+    Unlike delete, this always keeps the transactions and the transaction
+    summary intact so any payment already collected stays on the books (visible
+    in the financial journal and, if money was paid, as a "cancelled" overlay on
+    the matrix). Pass ?restore=true to reverse a cancellation.
+    """
+    try:
+        booking_result = await db.execute(select(Booking).filter(Booking.id == booking_id))
+        booking = booking_result.scalar_one_or_none()
+
+        if not booking:
+            return JSONResponse(status_code=404, content={"success": False, "message": "Booking not found"})
+
+        if restore:
+            # Refuse to restore if the slot is now occupied by a live booking.
+            occupied = await db.execute(
+                select(Booking.id).filter(
+                    Booking.booking_date == booking.booking_date,
+                    Booking.time_slot == booking.time_slot,
+                    Booking.id != booking_id,
+                    or_(Booking.is_cancelled == False, Booking.is_cancelled == None),
+                )
+            )
+            if occupied.scalar_one_or_none():
+                return JSONResponse(status_code=409, content={
+                    "success": False,
+                    "message": "Can't restore — this slot is already booked by someone else.",
+                })
+            booking.is_cancelled = False
+            booking.cancelled_at = None
+            message = "Booking restored."
+        else:
+            booking.is_cancelled = True
+            booking.cancelled_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            message = "Booking cancelled. Payment records retained for accounting."
+
+        booking.last_modified_by = current_user.id
+        await db.commit()
+        invalidate_dashboard_cache()
+        invalidate_booking_summary_cache(booking_id)
+
+        # Return the refreshed matrix for the requested range so the client can
+        # patch both live and cancelled overlays in one shot.
+        today = datetime.now().date()
+        try:
+            fetch_start = datetime.strptime(start_date, "%Y-%m-%d").date() if start_date else booking.booking_date - timedelta(days=3)
+            fetch_end = datetime.strptime(end_date, "%Y-%m-%d").date() if end_date else booking.booking_date + timedelta(days=3)
+        except ValueError:
+            fetch_start, fetch_end = today, today + timedelta(days=6)
+        fetch_end = min(fetch_end, fetch_start + relativedelta(months=3))
+
+        bookings_data, cancelled_data = await build_matrix_response(db, fetch_start, fetch_end)
+
+        return JSONResponse(content={
+            "success": True,
+            "message": message,
+            "bookingsData": bookings_data,
+            "cancelledData": cancelled_data,
+        })
+    except Exception as e:
+        await db.rollback()
+        print(f"Error in cancel_booking: {str(e)}")
+        return JSONResponse(status_code=500, content={"success": False, "message": f"An error occurred: {str(e)}"})
+
+
+'''
+--------------------
 BOOKINGS MATRIX ROUTE
 --------------------
 '''
@@ -1238,87 +1463,14 @@ async def bookings(
     max_end_date = start_date + relativedelta(months=3)
     end_date = min(end_date, max_end_date)
 
-    # Query for both normal bookings and academy bookings that overlap with the date range.
-    # Joined-load TransactionSummary so the matrix can render the payment status pill
-    # without a second /transaction_summaries round-trip.
-    bookings_result = await db.execute(
-        select(Booking)
-        .options(
-            joinedload(Booking.user),
-            joinedload(Booking.transaction_summary),
-        )
-        .filter(
-            or_(Booking.is_cancelled == False, Booking.is_cancelled == None),  # Exclude cancelled bookings
-            or_(
-                # Normal bookings within the date range
-                and_(
-                    Booking.booking_type == BookingType.NORMAL,
-                    Booking.booking_date.between(start_date, end_date)
-                ),
-                # Academy bookings that overlap with the date range
-                and_(
-                    Booking.booking_type == BookingType.ACADEMY,
-                    Booking.academy_start_date <= end_date,
-                    Booking.academy_end_date >= start_date
-                )
-            )
-        )
-        .order_by(Booking.booking_date, Booking.time_slot)
+    # bookingsData = live bookings; cancelledData = cancelled bookings that still
+    # hold money (rendered as a "cancelled but paid" overlay on the matrix).
+    bookings_data, cancelled_data = await build_matrix_response(db, start_date, end_date)
+
+    return JSONResponse(
+        content={"bookingsData": bookings_data, "cancelledData": cancelled_data},
+        headers=_bookings_cache_headers,
     )
-    bookings = bookings_result.unique().scalars().all()
-
-    bookings_data = {}
-    for b in bookings:
-        # Pre-extract the payment status (uppercase enum name) so every key for
-        # this booking — across multiple academy dates — sees the same value.
-        txn_status = b.transaction_summary.status.name if (b.transaction_summary and b.transaction_summary.status) else None
-
-        # For academy bookings, create entries for all dates in the range
-        if b.booking_type == BookingType.ACADEMY:
-            # Parse selected days of week if available
-            selected_days = None
-            if b.academy_days_of_week:
-                selected_days = [day.strip().upper() for day in b.academy_days_of_week.split(',')]
-
-            current_date = b.academy_start_date
-            while current_date <= b.academy_end_date:
-                # Only show dates within the requested range
-                if start_date <= current_date <= end_date:
-                    day_name = current_date.strftime('%A').upper()
-
-                    # Only include dates that match the selected days of week
-                    if not selected_days or day_name in selected_days:
-                        key = f"{current_date.isoformat()}_{b.time_slot}"
-                        bookings_data[key] = {
-                            "id": b.id,
-                            "name": b.name,
-                            "phone": b.phone,
-                            "booking_date": current_date.isoformat(),
-                            "time_slot": b.time_slot,
-                            "booking_type": b.booking_type.value,
-                            "academy_start_date": b.academy_start_date.isoformat(),
-                            "academy_end_date": b.academy_end_date.isoformat(),
-                            "academy_days_of_week": b.academy_days_of_week,
-                            "academy_notes": b.academy_notes,
-                            "booked_by": b.user.username,
-                            "transaction_status": txn_status,
-                        }
-                current_date += timedelta(days=1)
-        else:
-            # Normal booking
-            key = f"{b.booking_date.isoformat()}_{b.time_slot}"
-            bookings_data[key] = {
-                "id": b.id,
-                "name": b.name,
-                "phone": b.phone,
-                "booking_date": b.booking_date.isoformat(),
-                "time_slot": b.time_slot,
-                "booking_type": b.booking_type.value,
-                "booked_by": b.user.username,
-                "transaction_status": txn_status,
-            }
-
-    return JSONResponse(content={"bookingsData": bookings_data}, headers=_bookings_cache_headers)
 
 
 

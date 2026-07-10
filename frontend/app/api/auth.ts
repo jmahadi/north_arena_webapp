@@ -23,7 +23,17 @@ export interface DashboardData {
   avg_booking_value: number;
   pending_transactions: number;
   completed_transactions: number;
-  
+  partial_transactions: number;
+
+  // Operational metrics
+  revenue_today: number;
+  outstanding_dues: number;
+  occupancy_rate: number;
+  cancelled_retained_revenue: number;
+  cancelled_paid_count: number;
+  academy_bookings_this_month: number;
+  normal_bookings_this_month: number;
+
   // Chart data
   daily_revenue: Array<{ date: string; revenue: number }>;
   daily_bookings: Array<{ date: string; bookings: number }>;

@@ -37,45 +37,69 @@ export function useDashboard() {
 
 /**
  * Bookings data hook - caches per date range.
+ *
+ * SWR value shape is { bookings, cancelled }:
+ *   - bookings:  live (non-cancelled) slots, keyed "YYYY-MM-DD_slot".
+ *   - cancelled: cancelled-but-paid slots (arrays), same keys — rendered as a
+ *     retained-money overlay so cancelled bookings never silently disappear.
  */
+type MatrixState = { bookings: Record<string, any>; cancelled: Record<string, any[]> };
+const EMPTY_MATRIX: MatrixState = { bookings: {}, cancelled: {} };
+
 export function useBookings(startDate: string, endDate: string) {
   const key = startDate && endDate ? `/api/bookings?start_date=${startDate}&end_date=${endDate}` : null;
 
-  const { data, error, isLoading, mutate: mutateBookings } = useSWR(
+  const { data, error, isLoading, mutate: mutateBookings } = useSWR<MatrixState>(
     key,
     async (url: string) => {
-      // /api/bookings now embeds transaction_status directly via a server-side join,
-      // so this is a single round-trip — no need to also fetch /transaction_summaries.
-      const bookingsRes = await api.get(url);
-      return bookingsRes.data.bookingsData || {};
+      // /api/bookings embeds transaction_status via a server-side join and now
+      // also returns cancelledData — a single round-trip covers the whole matrix.
+      const res = await api.get(url);
+      return { bookings: res.data.bookingsData || {}, cancelled: res.data.cancelledData || {} };
     },
     {
       revalidateOnMount: true,
     }
   );
 
+  const state = data || EMPTY_MATRIX;
+
   return {
-    bookings: data || {},
+    bookings: state.bookings,
+    cancelled: state.cancelled,
     isLoading: isLoading && !data,
     error,
     refresh: () => mutateBookings(),
-    setBookings: (newData: any) => mutateBookings(newData, { revalidate: false }),
-    // Optimistically patch transaction_status for a booking across all its matrix entries.
-    // Used after payment add/update/delete so the matrix icon updates instantly.
+    // Replace both maps at once — used after add/update/delete/cancel where the
+    // server returns the freshly rebuilt matrix.
+    setMatrix: (bookingsData: any, cancelledData?: any) =>
+      mutateBookings({ bookings: bookingsData || {}, cancelled: cancelledData || {} }, { revalidate: false }),
+    // Merge a partial range into the existing matrix (paging left/right).
+    mergeMatrix: (bookingsPartial: any, cancelledPartial: any, prepend: boolean) =>
+      mutateBookings((cur) => {
+        const base = cur || EMPTY_MATRIX;
+        return prepend
+          ? {
+              bookings: { ...(bookingsPartial || {}), ...base.bookings },
+              cancelled: { ...(cancelledPartial || {}), ...base.cancelled },
+            }
+          : {
+              bookings: { ...base.bookings, ...(bookingsPartial || {}) },
+              cancelled: { ...base.cancelled, ...(cancelledPartial || {}) },
+            };
+      }, { revalidate: false }),
+    // Optimistically patch transaction_status for a booking across all its matrix
+    // entries. Used after payment add/update/delete so the icon updates instantly.
     patchBookingStatus: (bookingId: number, status: 'PENDING' | 'PARTIAL' | 'SUCCESSFUL' | null) => {
       mutateBookings(
-        (current: any) => {
+        (current) => {
           if (!current) return current;
-          const next: any = {};
-          for (const key of Object.keys(current)) {
-            const b = current[key];
-            if (b && b.id === bookingId) {
-              next[key] = { ...b, transaction_status: status };
-            } else {
-              next[key] = b;
-            }
+          const next: Record<string, any> = {};
+          for (const k of Object.keys(current.bookings)) {
+            const b = current.bookings[k];
+            next[k] = b && b.id === bookingId ? { ...b, transaction_status: status } : b;
           }
-          return next;
+          return { ...current, bookings: next };
         },
         { revalidate: false }
       );

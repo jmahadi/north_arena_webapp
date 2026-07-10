@@ -3,8 +3,7 @@ import api from '../utils/axios';
 export const fetchBookings = async (startDate: string, endDate: string) => {
   try {
     const response = await api.get('/api/bookings', { params: { start_date: startDate, end_date: endDate } });
-    console.log('Bookings data received:', response.data);
-    
+
     // Ensure the booked_by property is present in each booking
     const bookingsData = response.data.bookingsData || {};
     Object.keys(bookingsData).forEach(key => {
@@ -12,8 +11,10 @@ export const fetchBookings = async (startDate: string, endDate: string) => {
         bookingsData[key].booked_by = 'Unknown'; // Or any default value
       }
     });
-    
-    return { bookingsData };
+
+    const cancelledData = response.data.cancelledData || {};
+
+    return { bookingsData, cancelledData };
   } catch (error) {
     console.error('Error fetching bookings:', error);
     throw error;
@@ -149,6 +150,29 @@ export const deleteBooking = async (
 
   // Pass params in the request
   const response = await api.delete(`/api/delete_booking/${bookingId}`, { params });
+  return response.data;
+};
+
+export interface CancelBookingResponse {
+  success: boolean;
+  message: string;
+  bookingsData: Record<string, any>;
+  cancelledData: Record<string, any[]>;
+}
+
+// Mark a booking as cancelled (or restore it) WITHOUT deleting its money.
+// Unlike deleteBooking, this always keeps transactions + summary intact.
+export const cancelBooking = async (
+  bookingId: number,
+  startDate?: string,
+  endDate?: string,
+  restore: boolean = false
+): Promise<CancelBookingResponse> => {
+  const params: Record<string, string | boolean> = { restore };
+  if (startDate) params['start_date'] = startDate;
+  if (endDate) params['end_date'] = endDate;
+
+  const response = await api.post(`/api/cancel_booking/${bookingId}`, null, { params });
   return response.data;
 };
 
