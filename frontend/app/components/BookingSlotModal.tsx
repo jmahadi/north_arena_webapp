@@ -517,18 +517,19 @@ export default function BookingSlotModal({
                     required
                   />
                   {showSuggestions && suggestions.length > 0 && (
-                    <ul className="absolute z-30 left-0 right-0 mt-1 max-h-56 overflow-y-auto rounded-lg border border-white/10 bg-[#15151a] shadow-2xl scrollbar-sleek">
+                    <ul className="absolute z-30 left-0 right-0 mt-1 max-h-48 overflow-y-auto rounded-lg border border-white/10 bg-[#15151a] shadow-2xl scrollbar-sleek">
                       {suggestions.map((s, i) => (
                         <li
                           key={`${s.phone}-${i}`}
                           // onMouseDown (not onClick) so it fires before the input's onBlur.
                           onMouseDown={(e) => { e.preventDefault(); applySuggestion(s); }}
-                          className={`px-3 py-2 cursor-pointer flex items-center justify-between gap-2 ${
+                          className={`px-3 py-1.5 cursor-pointer border-b border-white/[0.04] last:border-0 ${
                             i === activeSuggestion ? 'bg-orange-500/15' : 'hover:bg-white/[0.05]'
                           }`}
                         >
-                          <span className="text-sm text-white truncate">{s.name}</span>
-                          <span className="text-xs text-white/40 shrink-0">{s.phone}</span>
+                          {/* Name and phone stacked so long names aren't truncated. */}
+                          <div className="text-sm text-white leading-tight break-words">{s.name}</div>
+                          <div className="text-[11px] text-white/40 leading-tight mt-0.5">{s.phone}</div>
                         </li>
                       ))}
                     </ul>
