@@ -1,5 +1,23 @@
 import api from '../utils/axios';
 
+export interface CustomerSuggestion {
+  name: string;
+  phone: string;
+}
+
+// Type-ahead search for the booking form. Returns up to 8 name/phone matches.
+export const searchCustomers = async (q: string): Promise<CustomerSuggestion[]> => {
+  const term = q.trim();
+  if (!term) return [];
+  try {
+    const response = await api.get('/api/customers/search', { params: { q: term } });
+    return response.data.customers || [];
+  } catch (error) {
+    console.error('Customer search failed:', error);
+    return [];
+  }
+};
+
 export const fetchBookings = async (startDate: string, endDate: string) => {
   try {
     const response = await api.get('/api/bookings', { params: { start_date: startDate, end_date: endDate } });

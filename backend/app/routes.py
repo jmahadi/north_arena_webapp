@@ -11,7 +11,7 @@ from passlib.context import CryptContext
 from datetime import datetime , timedelta  ,timezone , date
 from dateutil.relativedelta import relativedelta
 from .database import get_db, SessionLocal
-from .models import User , Booking , Transaction, SlotPrice, PaymentMethod , TransactionStatus , TransactionType , TransactionSummary, DayOfWeek, BookingType, UserRole, AuditLog
+from .models import User , Booking , Transaction, SlotPrice, PaymentMethod , TransactionStatus , TransactionType , TransactionSummary, DayOfWeek, BookingType, UserRole, AuditLog, Customer
 from .auth import create_access_token, get_current_user, require_master
 import os
 import asyncio
@@ -86,6 +86,24 @@ async def record_audit(user, action: str, entity_type: str = None, entity_id: in
             await session.commit()
     except Exception as e:
         logger.error(f"Audit log failed for action={action}: {e}")
+
+
+async def upsert_customer(name: str, phone: str):
+    """Keep the customer directory fresh: insert a new phone, or refresh the name
+    on an existing one. Best-effort (own session) so it never blocks a booking."""
+    if not name or not phone or not phone.strip():
+        return
+    try:
+        async with SessionLocal() as session:
+            await session.execute(text("""
+                INSERT INTO customers (name, phone, created_at, updated_at)
+                VALUES (:name, :phone, (now() AT TIME ZONE 'utc'), (now() AT TIME ZONE 'utc'))
+                ON CONFLICT (phone) DO UPDATE
+                SET name = EXCLUDED.name, updated_at = (now() AT TIME ZONE 'utc')
+            """), {"name": name.strip(), "phone": phone.strip()})
+            await session.commit()
+    except Exception as e:
+        logger.error(f"Customer upsert failed for {phone}: {e}")
 
 
 '''
@@ -726,6 +744,7 @@ async def book(
                                f"Created academy booking for {name} · {time_slot}",
                                {"type": "ACADEMY", "days": days_count, "total_price": total_price,
                                 "start": str(academy_start), "end": str(academy_end)})
+            await upsert_customer(name, phone)
 
         # Handle Normal booking (including bulk normal bookings)
         else:
@@ -808,6 +827,7 @@ async def book(
                                    f"Created {len(dates_to_book)} bookings for {name} · {time_slot}",
                                    {"type": "BULK", "count": len(dates_to_book), "slot": time_slot,
                                     "dates": [d.isoformat() for d in dates_to_book[:20]]})
+                await upsert_customer(name, phone)
 
             else:
                 # Single normal booking
@@ -855,6 +875,7 @@ async def book(
                 await record_audit(current_user, "booking.create", "booking", new_booking_id,
                                    f"Booked {name} · {booking_date_parsed} · {time_slot}",
                                    {"type": "NORMAL", "date": str(booking_date_parsed), "slot": time_slot})
+                await upsert_customer(name, phone)
 
         # Determine date range for returning bookings
         fetch_start_date = None
@@ -1114,6 +1135,7 @@ async def update_booking(
         await record_audit(current_user, "booking.update", "booking", booking_id,
                            f"Edited booking for {name} · {time_slot}",
                            {"name": name, "phone": phone, "slot": time_slot, "type": booking_type})
+        await upsert_customer(name, phone)
 
         # Use the provided date range if available
         fetch_start_date = None
@@ -2763,4 +2785,75 @@ async def get_audit_logs(
         return JSONResponse(status_code=400, content={"success": False, "message": f"Invalid parameter: {str(e)}"})
     except SQLAlchemyError as e:
         logging.error(f"Database error in get_audit_logs: {str(e)}")
+        return JSONResponse(status_code=500, content={"success": False, "message": "Database error"})
+
+
+'''
+--------------------
+CUSTOMER DIRECTORY (autocomplete) ROUTES
+--------------------
+'''
+
+@router.get("/api/customers/search")
+async def search_customers(
+    q: str = Query(..., min_length=1),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Type-ahead for the booking form. Matches name (prefix first, then
+    contains) or phone, newest-updated first. Returns up to 8 suggestions."""
+    try:
+        term = q.strip()
+        if not term:
+            return {"success": True, "customers": []}
+        prefix = f"{term}%"
+        contains = f"%{term}%"
+        result = await db.execute(
+            select(Customer.name, Customer.phone)
+            .filter(
+                or_(
+                    Customer.name.ilike(prefix),
+                    Customer.name.ilike(contains),
+                    Customer.phone.ilike(contains),
+                )
+            )
+            .order_by(
+                case((Customer.name.ilike(prefix), 0), else_=1),
+                Customer.updated_at.desc(),
+            )
+            .limit(8)
+        )
+        rows = [{"name": r[0], "phone": r[1]} for r in result.all()]
+        return {"success": True, "customers": rows}
+    except SQLAlchemyError as e:
+        logging.error(f"Database error in search_customers: {str(e)}")
+        return JSONResponse(status_code=500, content={"success": False, "message": "Database error"})
+
+
+@router.post("/api/customers/resync")
+async def resync_customers(
+    current_user: User = Depends(require_master),
+    db: AsyncSession = Depends(get_db),
+):
+    """Rebuild the customer directory from the bookings table. Run this after a
+    bulk import of historical bookings so their customers become searchable."""
+    try:
+        await db.execute(text("""
+            INSERT INTO customers (name, phone, created_at, updated_at)
+            SELECT DISTINCT ON (phone) name, phone,
+                   (now() AT TIME ZONE 'utc'), (now() AT TIME ZONE 'utc')
+            FROM bookings
+            WHERE phone IS NOT NULL AND btrim(phone) <> ''
+            ORDER BY phone, id DESC
+            ON CONFLICT (phone) DO UPDATE
+            SET name = EXCLUDED.name, updated_at = (now() AT TIME ZONE 'utc')
+        """))
+        await db.commit()
+        count = (await db.execute(select(func.count(Customer.id)))).scalar() or 0
+        await record_audit(current_user, "customer.resync", "customer", None,
+                           f"Resynced customer directory ({count} total)")
+        return {"success": True, "count": count}
+    except SQLAlchemyError as e:
+        await db.rollback()
+        logging.error(f"Database error in resync_customers: {str(e)}")
         return JSONResponse(status_code=500, content={"success": False, "message": "Database error"})

@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import { format } from 'date-fns';
+import { searchCustomers, CustomerSuggestion } from '../api/bookings';
 import {
   TransactionType,
   PaymentMethod,
@@ -115,6 +116,13 @@ export default function BookingSlotModal({
   const [isSavingBooking, setIsSavingBooking] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
+  // Customer name/phone autocomplete
+  const [suggestions, setSuggestions] = useState<CustomerSuggestion[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [activeSuggestion, setActiveSuggestion] = useState(-1);
+  // Suppress the search that would otherwise fire right after a pick or reseed.
+  const suppressSearchRef = useRef(false);
+
   // Payment state
   const [transactionType, setTransactionType] = useState<TransactionType | ''>('SLOT_PAYMENT');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | ''>('');
@@ -150,7 +158,62 @@ export default function BookingSlotModal({
     setPaymentMethod('');
     setAmount('');
     setIsDiscountMode(false);
+    // Don't pop suggestions from the value we just seeded into the field.
+    suppressSearchRef.current = true;
+    setSuggestions([]);
+    setShowSuggestions(false);
+    setActiveSuggestion(-1);
   }, [draft.id, draft.selectedDate, draft.selectedSlot, isOpen]);
+
+  // Debounced customer type-ahead. Fires ~200ms after the name stops changing.
+  useEffect(() => {
+    if (!isOpen) return;
+    if (suppressSearchRef.current) {
+      suppressSearchRef.current = false;
+      return;
+    }
+    const term = name.trim();
+    if (term.length < 2) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+    const handle = setTimeout(async () => {
+      const results = await searchCustomers(term);
+      // Hide a lone exact match (nothing left to complete).
+      const filtered = results.filter(
+        (r) => !(results.length === 1 && r.name.toLowerCase() === term.toLowerCase())
+      );
+      setSuggestions(filtered);
+      setShowSuggestions(filtered.length > 0);
+      setActiveSuggestion(-1);
+    }, 200);
+    return () => clearTimeout(handle);
+  }, [name, isOpen]);
+
+  const applySuggestion = (s: CustomerSuggestion) => {
+    suppressSearchRef.current = true;
+    setName(s.name);
+    setPhone(s.phone);
+    setShowSuggestions(false);
+    setActiveSuggestion(-1);
+  };
+
+  const handleNameKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showSuggestions || suggestions.length === 0) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActiveSuggestion((i) => Math.min(i + 1, suggestions.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActiveSuggestion((i) => Math.max(i - 1, 0));
+    } else if (e.key === 'Enter' && activeSuggestion >= 0) {
+      e.preventDefault();
+      applySuggestion(suggestions[activeSuggestion]);
+    } else if (e.key === 'Escape') {
+      setShowSuggestions(false);
+    }
+  };
 
   // Lock body scroll
   useEffect(() => {
@@ -440,15 +503,36 @@ export default function BookingSlotModal({
                   vertical space so the payment section sits above the fold
                   on mobile without a scroll. */}
               <div className="grid grid-cols-2 gap-2">
-                <div>
+                <div className="relative">
                   <label className="block text-[10px] text-white/40 mb-1 uppercase tracking-wider">Name</label>
                   <input
                     type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
+                    onKeyDown={handleNameKeyDown}
+                    onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true); }}
+                    onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
                     className="glass-input w-full rounded-lg p-2 text-sm"
+                    autoComplete="off"
                     required
                   />
+                  {showSuggestions && suggestions.length > 0 && (
+                    <ul className="absolute z-30 left-0 right-0 mt-1 max-h-56 overflow-y-auto rounded-lg border border-white/10 bg-[#15151a] shadow-2xl scrollbar-sleek">
+                      {suggestions.map((s, i) => (
+                        <li
+                          key={`${s.phone}-${i}`}
+                          // onMouseDown (not onClick) so it fires before the input's onBlur.
+                          onMouseDown={(e) => { e.preventDefault(); applySuggestion(s); }}
+                          className={`px-3 py-2 cursor-pointer flex items-center justify-between gap-2 ${
+                            i === activeSuggestion ? 'bg-orange-500/15' : 'hover:bg-white/[0.05]'
+                          }`}
+                        >
+                          <span className="text-sm text-white truncate">{s.name}</span>
+                          <span className="text-xs text-white/40 shrink-0">{s.phone}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
                 <div>
                   <label className="block text-[10px] text-white/40 mb-1 uppercase tracking-wider">Phone</label>

@@ -159,6 +159,23 @@ class DayOfWeek(enum.Enum):
     SATURDAY = "Saturday"
 
 
+class Customer(Base):
+    """Lightweight customer directory powering name/phone autocomplete on the
+    booking form. One row per phone number (the stable identity); name reflects
+    the most recent booking. Kept fresh by an upsert on every booking and a
+    backfill/resync from the bookings table."""
+    __tablename__ = "customers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    phone = Column(String, nullable=False, unique=True, index=True)
+    created_at = Column(DateTime, default=datetime.now(timezone.utc).replace(tzinfo=None))
+    updated_at = Column(DateTime, default=datetime.now(timezone.utc).replace(tzinfo=None), onupdate=datetime.now(timezone.utc).replace(tzinfo=None))
+
+    def __repr__(self):
+        return f"<Customer {self.name} ({self.phone})>"
+
+
 class AuditLog(Base):
     """Append-only activity trail: who did what, when, to which entity.
 
