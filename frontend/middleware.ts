@@ -28,7 +28,7 @@ function isTokenExpired(token: string): boolean {
 
 export function middleware(request: NextRequest) {
   const token = request.cookies.get('token')?.value;
-  const protectedPaths = ['/dashboard', '/bookings' , '/transactions']; // Add more paths as needed
+  const protectedPaths = ['/dashboard', '/bookings' , '/transactions', '/users', '/activity']; // Add more paths as needed
 
   // Check if the path requires authentication
   if (protectedPaths.some(path => request.nextUrl.pathname.startsWith(path))) {
@@ -52,5 +52,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*', '/bookings/:path*', '/transactions/:path*', '/login'],
+  matcher: ['/dashboard/:path*', '/bookings/:path*', '/transactions/:path*', '/users/:path*', '/activity/:path*', '/login'],
 };

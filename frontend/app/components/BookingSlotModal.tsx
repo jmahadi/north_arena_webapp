@@ -13,7 +13,7 @@ import {
   updateTransaction,
   deleteTransaction,
 } from '../api/transactions';
-import { useBookingPaymentSummary, invalidateAll } from '../hooks/useApi';
+import { useBookingPaymentSummary, invalidateAll, useMe } from '../hooks/useApi';
 
 const TIME_SLOTS = [
   '9:30 AM - 11:00 AM',
@@ -125,6 +125,7 @@ export default function BookingSlotModal({
   const [paymentError, setPaymentError] = useState<string | null>(null);
 
   const bookingId = draft.id;
+  const { isMaster } = useMe();
   const { paymentSummary, isLoading: isLoadingPayment, refresh: refreshSummary } = useBookingPaymentSummary(
     bookingId,
     isOpen && !!bookingId,
@@ -629,13 +630,15 @@ export default function BookingSlotModal({
                         Restore Booking
                       </button>
                     )}
-                    <button
-                      type="button"
-                      onClick={handleDeleteBooking}
-                      className="px-3 py-2 text-xs font-medium text-red-400 rounded-lg border border-red-500/20 hover:bg-red-500/10 transition-all duration-200"
-                    >
-                      Delete
-                    </button>
+                    {isMaster && (
+                      <button
+                        type="button"
+                        onClick={handleDeleteBooking}
+                        className="px-3 py-2 text-xs font-medium text-red-400 rounded-lg border border-red-500/20 hover:bg-red-500/10 transition-all duration-200"
+                      >
+                        Delete
+                      </button>
+                    )}
                   </>
                 ) : (
                   <>
@@ -655,7 +658,7 @@ export default function BookingSlotModal({
                         Mark Cancelled
                       </button>
                     )}
-                    {bookingId && (
+                    {bookingId && isMaster && (
                       <button
                         type="button"
                         onClick={handleDeleteBooking}
@@ -715,6 +718,15 @@ export default function BookingSlotModal({
                         ৳{paymentSummary.summary.leftover.toLocaleString()}
                       </div>
                     </div>
+                  </div>
+
+                  {/* Attribution: who created / last edited this booking */}
+                  <div className="text-[10px] text-white/30">
+                    Booked by <span className="text-white/50">{paymentSummary.booking.created_by || 'Unknown'}</span>
+                    {paymentSummary.booking.last_modified_by &&
+                      paymentSummary.booking.last_modified_by !== paymentSummary.booking.created_by && (
+                        <> · edited by <span className="text-white/50">{paymentSummary.booking.last_modified_by}</span></>
+                      )}
                   </div>
 
                   {paymentError && (
@@ -888,6 +900,7 @@ export default function BookingSlotModal({
                                 </div>
                                 <div className="text-[10px] text-white/20 mt-0.5">
                                   {format(new Date(transaction.created_at), 'MMM dd, HH:mm')}
+                                  {transaction.created_by && <> · by {transaction.created_by}</>}
                                 </div>
                               </div>
                               <div className="text-sm text-white font-semibold">৳{transaction.amount.toLocaleString()}</div>

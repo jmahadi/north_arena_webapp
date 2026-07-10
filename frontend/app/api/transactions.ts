@@ -281,6 +281,7 @@ export interface BookingPaymentSummary {
     booking_type: string;
     is_cancelled: boolean;
     created_by: string;
+    last_modified_by?: string | null;
   };
   summary: {
     total_price: number;

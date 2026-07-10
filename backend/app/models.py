@@ -8,6 +8,11 @@ import enum
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+class UserRole(enum.Enum):
+    MASTER = "MASTER"   # full access: delete, pricing, user management
+    STAFF = "STAFF"     # day-to-day: bookings + payments, no destructive/admin ops
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -15,6 +20,9 @@ class User(Base):
     username = Column(String, unique=True, index=True)
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String)
+    role = Column(Enum(UserRole, name='userrole'), default=UserRole.STAFF, nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.now(timezone.utc).replace(tzinfo=None))
 
     bookings = relationship("Booking", back_populates="user", foreign_keys="Booking.booked_by")
     modified_bookings = relationship("Booking", back_populates="last_modified_by_user", foreign_keys="Booking.last_modified_by")
@@ -24,6 +32,10 @@ class User(Base):
 
     def check_password(self, password: str) -> bool:
         return pwd_context.verify(password, self.hashed_password)
+
+    @property
+    def is_master(self) -> bool:
+        return self.role == UserRole.MASTER
 
     def __repr__(self):
         return f'<User {self.username}>'
@@ -145,6 +157,27 @@ class DayOfWeek(enum.Enum):
     THURSDAY = "Thursday"
     FRIDAY = "Friday"
     SATURDAY = "Saturday"
+
+
+class AuditLog(Base):
+    """Append-only activity trail: who did what, when, to which entity.
+
+    Never updated after insert. `details` holds a small JSON blob of context
+    (amounts, before/after values, names) rendered on the activity page.
+    """
+    __tablename__ = "audit_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=True)  # nullable: system/anon events
+    actor_name = Column(String, nullable=True)   # denormalized username, survives user deletion
+    action = Column(String, nullable=False)       # e.g. booking.create, transaction.delete, auth.login
+    entity_type = Column(String, nullable=True)   # booking | transaction | slot_price | user | auth
+    entity_id = Column(Integer, nullable=True)
+    summary = Column(String, nullable=True)       # human-readable one-liner
+    details = Column(String, nullable=True)       # JSON string
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+
+    user = relationship("User", foreign_keys=[user_id])
 
 
 class SlotPrice(Base):

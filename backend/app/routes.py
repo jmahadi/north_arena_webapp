@@ -11,8 +11,8 @@ from passlib.context import CryptContext
 from datetime import datetime , timedelta  ,timezone , date
 from dateutil.relativedelta import relativedelta
 from .database import get_db, SessionLocal
-from .models import User , Booking , Transaction, SlotPrice, PaymentMethod , TransactionStatus , TransactionType , TransactionSummary, DayOfWeek, BookingType
-from .auth import create_access_token, get_current_user
+from .models import User , Booking , Transaction, SlotPrice, PaymentMethod , TransactionStatus , TransactionType , TransactionSummary, DayOfWeek, BookingType, UserRole, AuditLog
+from .auth import create_access_token, get_current_user, require_master
 import os
 import asyncio
 from sqlalchemy.exc import SQLAlchemyError
@@ -56,6 +56,36 @@ def invalidate_booking_summary_cache(booking_id: int | None = None):
         _booking_summary_cache.clear()
     else:
         _booking_summary_cache.pop(booking_id, None)
+
+
+'''
+--------------------
+AUDIT LOG HELPER
+--------------------
+'''
+
+async def record_audit(user, action: str, entity_type: str = None, entity_id: int = None,
+                       summary: str = None, details: dict = None):
+    """Append one row to the activity trail.
+
+    Runs in its own session so an audit failure can never roll back or break the
+    business action that triggered it (best-effort logging). Call AFTER the main
+    mutation has committed.
+    """
+    try:
+        async with SessionLocal() as session:
+            session.add(AuditLog(
+                user_id=getattr(user, 'id', None),
+                actor_name=getattr(user, 'username', None),
+                action=action,
+                entity_type=entity_type,
+                entity_id=entity_id,
+                summary=summary,
+                details=json.dumps(details, default=str) if details is not None else None,
+            ))
+            await session.commit()
+    except Exception as e:
+        logger.error(f"Audit log failed for action={action}: {e}")
 
 
 '''
@@ -361,8 +391,12 @@ async def login(
     if not user or not user.check_password(form_data.password):
         logger.warning(f"Failed login attempt for user: {form_data.username}")
         raise HTTPException(status_code=400, detail="Incorrect email or password")
+    if getattr(user, "is_active", True) is False:
+        logger.warning(f"Deactivated user login blocked: {form_data.username}")
+        raise HTTPException(status_code=403, detail="Your account has been deactivated. Contact an administrator.")
     access_token = create_access_token(data={"sub": user.email})
     logger.info(f"Successful login for user: {form_data.username}")
+    await record_audit(user, "auth.login", "auth", user.id, f"{user.username} signed in")
     return {"access_token": access_token, "token_type": "bearer"}
 
 '''
@@ -674,6 +708,7 @@ async def book(
             )
             db.add(booking)
             await db.flush()  # Get the booking ID
+            new_booking_id = booking.id  # capture before commit (expire_on_commit)
 
             # Create transaction summary for academy booking
             summary = TransactionSummary(
@@ -687,6 +722,10 @@ async def book(
             await db.commit()
 
             message = f"Academy slot booked successfully for {days_count} days (₹{total_price:.2f})"
+            await record_audit(current_user, "booking.create", "booking", new_booking_id,
+                               f"Created academy booking for {name} · {time_slot}",
+                               {"type": "ACADEMY", "days": days_count, "total_price": total_price,
+                                "start": str(academy_start), "end": str(academy_end)})
 
         # Handle Normal booking (including bulk normal bookings)
         else:
@@ -765,6 +804,10 @@ async def book(
 
                 await db.commit()
                 message = f"Successfully booked {len(dates_to_book)} slots"
+                await record_audit(current_user, "booking.create", "booking", None,
+                                   f"Created {len(dates_to_book)} bookings for {name} · {time_slot}",
+                                   {"type": "BULK", "count": len(dates_to_book), "slot": time_slot,
+                                    "dates": [d.isoformat() for d in dates_to_book[:20]]})
 
             else:
                 # Single normal booking
@@ -805,8 +848,13 @@ async def book(
                     last_modified_by=current_user.id
                 )
                 db.add(booking)
+                await db.flush()
+                new_booking_id = booking.id  # capture before commit (expire_on_commit)
                 await db.commit()
                 message = "Slot has been successfully booked"
+                await record_audit(current_user, "booking.create", "booking", new_booking_id,
+                                   f"Booked {name} · {booking_date_parsed} · {time_slot}",
+                                   {"type": "NORMAL", "date": str(booking_date_parsed), "slot": time_slot})
 
         # Determine date range for returning bookings
         fetch_start_date = None
@@ -1063,6 +1111,9 @@ async def update_booking(
             booking.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
         await db.commit()
+        await record_audit(current_user, "booking.update", "booking", booking_id,
+                           f"Edited booking for {name} · {time_slot}",
+                           {"name": name, "phone": phone, "slot": time_slot, "type": booking_type})
 
         # Use the provided date range if available
         fetch_start_date = None
@@ -1183,7 +1234,7 @@ async def delete_booking(
     start_date: str = Query(None),
     end_date: str = Query(None),
     retain_payments: bool = Query(True),  # New parameter to control soft vs hard delete
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_master),  # master-only: destructive
     db: AsyncSession = Depends(get_db)
 ):
     try:
@@ -1199,6 +1250,8 @@ async def delete_booking(
         # Store booking info before deletion for fetching updated bookings
         booking_date = booking.booking_date
         booking_type = booking.booking_type
+        booking_name = booking.name
+        booking_slot = booking.time_slot
         academy_start_date = booking.academy_start_date if booking_type == BookingType.ACADEMY else None
         academy_end_date = booking.academy_end_date if booking_type == BookingType.ACADEMY else None
 
@@ -1234,6 +1287,12 @@ async def delete_booking(
             await db.delete(booking)
             await db.commit()
             message = "Booking deleted successfully"
+
+        await record_audit(current_user,
+                           "booking.cancel" if (has_transactions and retain_payments) else "booking.delete",
+                           "booking", booking_id,
+                           f"{'Cancelled' if (has_transactions and retain_payments) else 'Permanently deleted'} booking for {booking_name} · {booking_slot}",
+                           {"had_transactions": has_transactions, "retained": bool(has_transactions and retain_payments)})
 
         # Handle date range for fetching updated bookings
         fetch_start_date = None
@@ -1395,16 +1454,23 @@ async def cancel_booking(
             message = "Booking cancelled. Payment records retained for accounting."
 
         booking.last_modified_by = current_user.id
+        b_name = booking.name
+        b_slot = booking.time_slot
+        b_date = booking.booking_date
         await db.commit()
         invalidate_dashboard_cache()
         invalidate_booking_summary_cache(booking_id)
+        await record_audit(current_user,
+                           "booking.restore" if restore else "booking.cancel",
+                           "booking", booking_id,
+                           f"{'Restored' if restore else 'Cancelled'} booking for {b_name} · {b_slot}")
 
         # Return the refreshed matrix for the requested range so the client can
         # patch both live and cancelled overlays in one shot.
         today = datetime.now().date()
         try:
-            fetch_start = datetime.strptime(start_date, "%Y-%m-%d").date() if start_date else booking.booking_date - timedelta(days=3)
-            fetch_end = datetime.strptime(end_date, "%Y-%m-%d").date() if end_date else booking.booking_date + timedelta(days=3)
+            fetch_start = datetime.strptime(start_date, "%Y-%m-%d").date() if start_date else b_date - timedelta(days=3)
+            fetch_end = datetime.strptime(end_date, "%Y-%m-%d").date() if end_date else b_date + timedelta(days=3)
         except ValueError:
             fetch_start, fetch_end = today, today + timedelta(days=6)
         fetch_end = min(fetch_end, fetch_start + relativedelta(months=3))
@@ -1661,6 +1727,7 @@ async def add_update_slot_price(
     start_date: str = Form(None),
     end_date: str = Form(None),
     is_default: bool = Form(True),
+    current_user: User = Depends(require_master),  # master-only: pricing
     db: AsyncSession = Depends(get_db)
 ):
     try:
@@ -1730,6 +1797,10 @@ async def add_update_slot_price(
             db.add(new_slot_price)
 
         await db.commit()
+        await record_audit(current_user, "slot_price.update", "slot_price", None,
+                           f"Set price ৳{price:g} for {time_slot} · {day_of_week}",
+                           {"time_slot": time_slot, "day": day_of_week, "price": price,
+                            "is_default": is_default, "start": start_date, "end": end_date})
         return JSONResponse(content={"success": True, "message": "Slot price added/updated successfully"})
     except Exception as exc:
         await db.rollback()
@@ -1739,25 +1810,25 @@ async def add_update_slot_price(
 @router.delete("/delete_slot_price/{slot_price_id}", response_class=JSONResponse)
 async def delete_slot_price(
     slot_price_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_master),  # master-only: pricing
     db: AsyncSession = Depends(get_db)
 ):
     try:
-        if not current_user:
-            return JSONResponse(status_code=401, content={"success": False, "message": "Not authenticated"})
-        
         # Find the slot price to delete
         slot_price_result = await db.execute(
             select(SlotPrice).filter(SlotPrice.id == slot_price_id)
         )
         slot_price = slot_price_result.scalar_one_or_none()
-        
+
         if not slot_price:
             return JSONResponse(status_code=404, content={"success": False, "message": "Slot price not found"})
-        
+
+        price_desc = f"{slot_price.time_slot} · {slot_price.day_of_week.value} · ৳{slot_price.price:g}"
         await db.delete(slot_price)
         await db.commit()
-        
+        await record_audit(current_user, "slot_price.delete", "slot_price", slot_price_id,
+                           f"Deleted price {price_desc}")
+
         return JSONResponse(content={"success": True, "message": "Slot price deleted successfully"})
     except Exception as exc:
         await db.rollback()
@@ -1999,12 +2070,22 @@ async def add_transaction(
             created_at=created_at
         )
         db.add(transaction)
+        await db.flush()
+        # Capture values before commit expires the ORM objects (expire_on_commit).
+        new_txn_id = transaction.id
+        booking_name = booking.name
+        txn_type_value = transaction_type_enum.value
+        method_value = payment_method_enum.value if payment_method_enum else None
         # The transactions_sync_summary AFTER trigger recomputes the matching
         # transaction_summaries row (including total_price lookup if it's the
         # first transaction for this booking). No Python-side recompute needed.
         await db.commit()
         invalidate_booking_summary_cache(booking_id)
         invalidate_dashboard_cache()
+        await record_audit(current_user, "transaction.create", "transaction", new_txn_id,
+                           f"Added ৳{amount:g} ({txn_type_value}) to {booking_name}'s booking",
+                           {"booking_id": booking_id, "amount": amount,
+                            "type": txn_type_value, "method": method_value})
         return JSONResponse(content={"success": True, "message": "Transaction added successfully"})
     
     except SQLAlchemyError as db_exc:
@@ -2099,11 +2180,21 @@ async def update_transaction(
         transaction.updated_by = current_user.id
         transaction.updated_at = datetime.now(timezone.utc)
 
+        # Capture post-update values before commit (expire_on_commit).
+        new_amount_value = transaction.amount
+        new_type_value = transaction.transaction_type.value
+        old_type_value = original_transaction_type.value if original_transaction_type else None
+
         # Commit the transaction update — the transactions_sync_summary AFTER
         # trigger recomputes the matching transaction_summaries row.
         await db.commit()
         invalidate_booking_summary_cache(booking_id)
         invalidate_dashboard_cache()
+        await record_audit(current_user, "transaction.update", "transaction", transaction_id,
+                           f"Edited payment #{transaction_id}",
+                           {"booking_id": booking_id,
+                            "old_amount": original_amount, "new_amount": new_amount_value,
+                            "old_type": old_type_value, "new_type": new_type_value})
         logging.info(f"Transaction {transaction_id} updated successfully")
 
         # Get fresh data to return
@@ -2176,6 +2267,8 @@ async def delete_transaction(
             )
 
         booking_id_for_invalidation = transaction.booking_id
+        deleted_amount = transaction.amount
+        deleted_type = transaction.transaction_type.value
 
         # Delete the transaction — the transactions_sync_summary AFTER trigger
         # recomputes (or deletes, if no transactions remain) the summary row.
@@ -2183,6 +2276,9 @@ async def delete_transaction(
         await db.commit()
         invalidate_booking_summary_cache(booking_id_for_invalidation)
         invalidate_dashboard_cache()
+        await record_audit(current_user, "transaction.delete", "transaction", transaction_id,
+                           f"Deleted payment of ৳{deleted_amount:g} ({deleted_type})",
+                           {"booking_id": booking_id_for_invalidation, "amount": deleted_amount, "type": deleted_type})
         logging.info(f"Transaction {transaction_id} deleted")
 
         return JSONResponse(content={
@@ -2380,7 +2476,8 @@ async def get_booking_payment_summary(
             select(Booking)
             .options(
                 joinedload(Booking.transaction_summary),
-                joinedload(Booking.user)
+                joinedload(Booking.user),
+                joinedload(Booking.last_modified_by_user),
             )
             .filter(Booking.id == booking_id)
         )
@@ -2449,7 +2546,8 @@ async def get_booking_payment_summary(
                 "time_slot": booking.time_slot,
                 "booking_type": booking.booking_type.value,
                 "is_cancelled": getattr(booking, 'is_cancelled', False),
-                "created_by": booking.user.username if booking.user else "Unknown"
+                "created_by": booking.user.username if booking.user else "Unknown",
+                "last_modified_by": booking.last_modified_by_user.username if booking.last_modified_by_user else None,
             },
             "summary": {
                 "total_price": total_price,
@@ -2474,3 +2572,195 @@ async def get_booking_payment_summary(
             "success": False,
             "message": f"Unexpected error: {str(e)}"
         })
+
+
+'''
+--------------------
+CURRENT USER / USER MANAGEMENT / AUDIT LOG ROUTES
+--------------------
+'''
+
+def _serialize_user(u: User) -> dict:
+    return {
+        "id": u.id,
+        "username": u.username,
+        "email": u.email,
+        "role": u.role.value if u.role else "STAFF",
+        "is_active": bool(getattr(u, "is_active", True)),
+        "is_master": getattr(u, "is_master", False),
+        "created_at": u.created_at.isoformat() if getattr(u, "created_at", None) else None,
+    }
+
+
+@router.get("/api/me")
+async def get_me(current_user: User = Depends(get_current_user)):
+    """Identity + role of the logged-in admin — used by the frontend to gate UI."""
+    return {"success": True, "user": _serialize_user(current_user)}
+
+
+@router.get("/api/users")
+async def list_users(current_user: User = Depends(require_master), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(User).order_by(User.id))
+    users = result.scalars().all()
+    return {"success": True, "users": [_serialize_user(u) for u in users]}
+
+
+@router.post("/api/users")
+async def create_user_account(
+    username: str = Form(...),
+    email: str = Form(...),
+    password: str = Form(...),
+    role: str = Form("STAFF"),
+    current_user: User = Depends(require_master),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        role_key = (role or "STAFF").strip().upper()
+        if role_key not in UserRole.__members__:
+            return JSONResponse(status_code=400, content={"success": False, "message": f"Invalid role: {role}"})
+        if len(password) < 6:
+            return JSONResponse(status_code=400, content={"success": False, "message": "Password must be at least 6 characters."})
+
+        existing = await db.execute(
+            select(User).filter(or_(User.email == email, User.username == username))
+        )
+        if existing.scalar_one_or_none():
+            return JSONResponse(status_code=409, content={"success": False, "message": "A user with that email or username already exists."})
+
+        user = User(username=username, email=email, role=UserRole[role_key], is_active=True)
+        user.set_password(password)
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+        await record_audit(current_user, "user.create", "user", user.id,
+                           f"Created {role_key.lower()} account for {username} ({email})",
+                           {"role": role_key})
+        return {"success": True, "user": _serialize_user(user)}
+    except SQLAlchemyError as e:
+        await db.rollback()
+        logging.error(f"Database error in create_user_account: {str(e)}")
+        return JSONResponse(status_code=500, content={"success": False, "message": "Database error"})
+
+
+@router.patch("/api/users/{user_id}")
+async def update_user_account(
+    user_id: int,
+    role: str = Form(None),
+    is_active: bool = Form(None),
+    password: str = Form(None),
+    current_user: User = Depends(require_master),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        result = await db.execute(select(User).filter(User.id == user_id))
+        user = result.scalar_one_or_none()
+        if not user:
+            return JSONResponse(status_code=404, content={"success": False, "message": "User not found"})
+
+        changes = {}
+
+        # Count remaining active masters to prevent locking everyone out.
+        masters_result = await db.execute(
+            select(func.count(User.id)).filter(User.role == UserRole.MASTER, User.is_active == True)
+        )
+        active_masters = masters_result.scalar() or 0
+
+        if role is not None:
+            role_key = role.strip().upper()
+            if role_key not in UserRole.__members__:
+                return JSONResponse(status_code=400, content={"success": False, "message": f"Invalid role: {role}"})
+            new_role = UserRole[role_key]
+            if user.role == UserRole.MASTER and new_role != UserRole.MASTER and active_masters <= 1:
+                return JSONResponse(status_code=400, content={"success": False, "message": "Can't demote the last master account."})
+            if user.id == current_user.id and new_role != UserRole.MASTER:
+                return JSONResponse(status_code=400, content={"success": False, "message": "You can't remove your own master role."})
+            changes["role"] = role_key
+            user.role = new_role
+
+        if is_active is not None:
+            if not is_active and user.id == current_user.id:
+                return JSONResponse(status_code=400, content={"success": False, "message": "You can't deactivate your own account."})
+            if not is_active and user.role == UserRole.MASTER and active_masters <= 1:
+                return JSONResponse(status_code=400, content={"success": False, "message": "Can't deactivate the last master account."})
+            changes["is_active"] = is_active
+            user.is_active = is_active
+
+        if password:
+            if len(password) < 6:
+                return JSONResponse(status_code=400, content={"success": False, "message": "Password must be at least 6 characters."})
+            user.set_password(password)
+            changes["password_reset"] = True
+
+        await db.commit()
+        await db.refresh(user)
+        await record_audit(current_user, "user.update", "user", user.id,
+                           f"Updated account {user.username}", changes)
+        return {"success": True, "user": _serialize_user(user)}
+    except SQLAlchemyError as e:
+        await db.rollback()
+        logging.error(f"Database error in update_user_account: {str(e)}")
+        return JSONResponse(status_code=500, content={"success": False, "message": "Database error"})
+
+
+@router.get("/api/audit-logs")
+async def get_audit_logs(
+    start_date: str = Query(None),
+    end_date: str = Query(None),
+    action: str = Query(None),          # comma-separated action prefixes/exact
+    entity_type: str = Query(None),     # comma-separated
+    user_id: int = Query(None),
+    limit: int = Query(100),
+    offset: int = Query(0),
+    current_user: User = Depends(require_master),
+    db: AsyncSession = Depends(get_db),
+):
+    """Filterable, paginated activity trail. Master-only oversight view."""
+    try:
+        query = select(AuditLog)
+        if start_date:
+            start = datetime.strptime(start_date, "%Y-%m-%d").date()
+            query = query.filter(AuditLog.created_at >= datetime.combine(start, datetime.min.time()))
+        if end_date:
+            end = datetime.strptime(end_date, "%Y-%m-%d").date()
+            query = query.filter(AuditLog.created_at <= datetime.combine(end, datetime.max.time()))
+        if action:
+            query = query.filter(AuditLog.action.in_([a.strip() for a in action.split(',')]))
+        if entity_type:
+            query = query.filter(AuditLog.entity_type.in_([e.strip() for e in entity_type.split(',')]))
+        if user_id:
+            query = query.filter(AuditLog.user_id == user_id)
+
+        count_result = await db.execute(select(func.count()).select_from(query.subquery()))
+        total = count_result.scalar() or 0
+
+        limit = max(1, min(limit, 500))
+        query = query.order_by(AuditLog.created_at.desc()).limit(limit).offset(max(0, offset))
+        result = await db.execute(query)
+        logs = result.scalars().all()
+
+        rows = []
+        for log in logs:
+            details = None
+            if log.details:
+                try:
+                    details = json.loads(log.details)
+                except Exception:
+                    details = log.details
+            rows.append({
+                "id": log.id,
+                "actor": log.actor_name or "System",
+                "user_id": log.user_id,
+                "action": log.action,
+                "entity_type": log.entity_type,
+                "entity_id": log.entity_id,
+                "summary": log.summary,
+                "details": details,
+                "created_at": log.created_at.isoformat() if log.created_at else None,
+            })
+
+        return {"success": True, "logs": rows, "total": total, "limit": limit, "offset": offset}
+    except ValueError as e:
+        return JSONResponse(status_code=400, content={"success": False, "message": f"Invalid parameter: {str(e)}"})
+    except SQLAlchemyError as e:
+        logging.error(f"Database error in get_audit_logs: {str(e)}")
+        return JSONResponse(status_code=500, content={"success": False, "message": "Database error"})

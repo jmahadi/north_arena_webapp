@@ -45,8 +45,19 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession
     if user is None:
         logger.warning(f"No user found for email: {email}")
         raise credentials_exception
+    # Deactivated accounts keep their history but can no longer act.
+    if getattr(user, "is_active", True) is False:
+        logger.warning(f"Deactivated user attempted access: {email}")
+        raise HTTPException(status_code=403, detail="Your account has been deactivated.")
     logger.info(f"User authenticated: {email}")
     return user
+
+
+def require_master(current_user: User = Depends(get_current_user)) -> User:
+    """Dependency guarding master-only actions (delete, pricing, user mgmt)."""
+    if not getattr(current_user, "is_master", False):
+        raise HTTPException(status_code=403, detail="This action requires a master account.")
+    return current_user
 
 def create_access_token(data: dict, expires_delta: timedelta = None):
     to_encode = data.copy()

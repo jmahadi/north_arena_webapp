@@ -13,6 +13,24 @@ import {
 const fetcher = (url: string) => api.get(url).then(res => res.data);
 
 /**
+ * Current logged-in admin (identity + role). Cached for the session and used to
+ * gate master-only UI (Users, Activity, Delete, pricing).
+ */
+export function useMe() {
+  const { data, error, isLoading } = useSWR(
+    '/api/me',
+    (url: string) => api.get(url).then(res => res.data.user),
+    { revalidateOnFocus: false, dedupingInterval: 60000 }
+  );
+  return {
+    me: data || null,
+    isMaster: data?.role === 'MASTER',
+    isLoading,
+    error,
+  };
+}
+
+/**
  * Dashboard data hook - caches data and shows stale content instantly on navigation.
  * Revalidates in the background every 2 minutes.
  */

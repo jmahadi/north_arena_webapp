@@ -264,13 +264,14 @@ export default function FinancialJournalPage() {
                       <th className="px-4 py-3 text-left text-[10px] font-medium text-white/25 uppercase tracking-wider whitespace-nowrap">Customer</th>
                       <th className="px-4 py-3 text-left text-[10px] font-medium text-white/25 uppercase tracking-wider whitespace-nowrap">Booking</th>
                       <th className="px-4 py-3 text-left text-[10px] font-medium text-white/25 uppercase tracking-wider whitespace-nowrap">Payment</th>
+                      <th className="px-4 py-3 text-left text-[10px] font-medium text-white/25 uppercase tracking-wider whitespace-nowrap">By</th>
                       <th className="px-4 py-3 text-right text-[10px] font-medium text-white/25 uppercase tracking-wider whitespace-nowrap">Amount</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/[0.03]">
                     {transactions.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="px-4 py-8 text-center text-white/25">
+                        <td colSpan={6} className="px-4 py-8 text-center text-white/25">
                           No transactions found
                         </td>
                       </tr>
@@ -307,6 +308,12 @@ export default function FinancialJournalPage() {
                                 ? 'bKash'
                                 : (t.payment_method || 'Other')}
                             </span>
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <div className="text-xs text-white/50">{t.created_by || '-'}</div>
+                            {t.updated_by && t.updated_by !== t.created_by && (
+                              <div className="text-[10px] text-white/20">edited: {t.updated_by}</div>
+                            )}
                           </td>
                           <td className="px-4 py-3 text-right whitespace-nowrap">
                             <span className="text-white font-semibold">৳{t.amount.toLocaleString()}</span>

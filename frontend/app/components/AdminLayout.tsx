@@ -11,8 +11,11 @@ import {
   HomeIcon,
   CalendarDaysIcon,
   BanknotesIcon,
-  CurrencyDollarIcon
+  CurrencyDollarIcon,
+  UsersIcon,
+  ClipboardDocumentListIcon
 } from '@heroicons/react/24/outline';
+import { useMe } from '../hooks/useApi';
 
 // Lazy-load the particle animation - not critical for initial page render
 const ParticlesBackground = dynamic(() => import('./ParticlesBackground'), {
@@ -24,16 +27,25 @@ interface AdminLayoutProps {
   children: ReactNode;
 }
 
-const navItems = [
+const baseNavItems = [
   { href: '/dashboard', label: 'Dashboard', icon: HomeIcon },
   { href: '/bookings', label: 'Bookings', icon: CalendarDaysIcon },
   { href: '/financial-journal', label: 'Financial Journal', icon: BanknotesIcon },
   { href: '/slot-prices', label: 'Slots & Prices', icon: CurrencyDollarIcon },
 ];
 
+// Master-only sections — hidden entirely for staff accounts.
+const masterNavItems = [
+  { href: '/activity', label: 'Activity Log', icon: ClipboardDocumentListIcon },
+  { href: '/users', label: 'Users', icon: UsersIcon },
+];
+
 export default function AdminLayout({ children }: AdminLayoutProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const { me, isMaster } = useMe();
+
+  const navItems = isMaster ? [...baseNavItems, ...masterNavItems] : baseNavItems;
 
   const handleLogout = async () => {
     try {
@@ -66,7 +78,22 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             North <span className="text-gradient-orange">Arena</span>
           </h1>
         </div>
-        <div className="text-xs text-white/30 hidden sm:block">Admin Panel</div>
+        <div className="hidden sm:flex items-center gap-2">
+          {me ? (
+            <>
+              <span className="text-xs text-white/50">{me.username}</span>
+              <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-semibold uppercase tracking-wider border ${
+                isMaster
+                  ? 'bg-orange-500/15 text-orange-400 border-orange-500/25'
+                  : 'bg-white/[0.04] text-white/40 border-white/10'
+              }`}>
+                {me.role}
+              </span>
+            </>
+          ) : (
+            <span className="text-xs text-white/30">Admin Panel</span>
+          )}
+        </div>
       </header>
 
       <div className="flex flex-1 overflow-hidden relative z-10">
